@@ -1,6 +1,5 @@
 import yfinance as yf, os, pandas as pd, requests, numpy as np
 from datetime import datetime
-import urllib.parse
 
 ETFS = {
     'XLE':'能源','XLF':'金融','XLK':'科技','XLV':'醫療','XLI':'工業',
@@ -20,7 +19,6 @@ def get_kdj(df, n=9, m1=3, m2=3):
     return j
 
 def find_double_divergence(price, ind, lookback=60):
-    """雙頂雙底背離: 價格創新高/新低但指標唔跟，就算升破跌破都算"""
     if len(price) < lookback: return None
     p = price.iloc[-lookback:]
     i = ind.iloc[-lookback:]
@@ -28,13 +26,10 @@ def find_double_divergence(price, ind, lookback=60):
     prev_high_idx = p.iloc[:-5].idxmax()
     prev_high = float(p.loc[prev_high_idx])
     prev_high_ind = float(i.loc[prev_high_idx])
-    
     prev_low_idx = p.iloc[:-5].idxmin()
     prev_low = float(p.loc[prev_low_idx])
     prev_low_ind = float(i.loc[prev_low_idx])
-    
     curr_ind = float(i.iloc[-1])
-    
     if curr_p >= prev_high * 0.97 and curr_ind < prev_high_ind * 0.97:
         return f"頂背離({curr_p:.2f}vs前高{prev_high:.2f},指標{curr_ind:.1f}<{prev_high_ind:.1f})"
     if curr_p <= prev_low * 1.03 and curr_ind > prev_low_ind * 1.03:
@@ -74,8 +69,7 @@ for etf,name_cn in ETFS.items():
             if shares: turnover_rate = vol_today / shares * 100
         except:
             turnover_rate = vol_ratio * 2.5
-        vol_alert = vol_ratio >= 2.0 and turnover_rate >= 5.0
-        if vol_alert:
+        if vol_ratio >= 2.0 and turnover_rate >= 5.0:
             alerts.append(f"🔥 {etf} 爆量 {vol_ratio:.1f}倍 換手{turnover_rate:.1f}% (日線)")
 
         kdj_msgs=[]
@@ -106,7 +100,6 @@ for etf,name_cn in ETFS.items():
             "turnover": turnover_rate,
             "extra": f"MACD:{'|'.join(macd_msgs) if macd_msgs else '無'}; VOL:{vol_ratio:.1f}x; KDJ:{'|'.join(kdj_msgs) if kdj_msgs else '無'}"
         })
-
     except Exception as e:
         print(f"skip {etf} {e}")
         continue
@@ -132,24 +125,23 @@ for s in signals:
 html+="</table><p>"+ "<br>".join(alerts) +"</p></body></html>"
 open("index.html","w",encoding="utf-8").write(html)
 
-# --- ntfy 推送 (主用) ---
+# --- ntfy 推送 (唔用WhatsApp) ---
 if alerts:
     try:
-        whatsapp_message = "💰 板塊頂底雷達 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
-        ntfy_topic = "sector-radar-ivan117"
-        ntfy_url = f"https://ntfy.sh/{ntfy_topic}"
+        message = "板塊頂底雷達 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
+        topic = "sector-radar-ivan117"
         requests.post(
-            ntfy_url,
-            data=whatsapp_message.encode('utf-8'),
+            f"https://ntfy.sh/{topic}",
+            data=message.encode('utf-8'),
             headers={
-                "Title": "板塊頂底雷達",
+                "Title": "Sector Radar Alert",
                 "Priority": "high",
-                "Tags": "rotating_light,chart_with_upwards_trend"
+                "Tags": "rotating_light"
             },
             timeout=10
         )
         print("ntfy Sent!")
-        print(whatsapp_message)
+        print(message)
     except Exception as e:
         print(f"ntfy Failed: {e}")
 else:
