@@ -22,10 +22,8 @@ def get_kdj(df, n=9, m1=3, m2=3):
 def find_double_divergence(price, ind, lookback=60):
     """雙頂雙底背離: 價格創新高/新低但指標唔跟，就算升破跌破都算"""
     if len(price) < lookback: return None
-    # 搵最近2個峰/谷
     p = price.iloc[-lookback:]
     i = ind.iloc[-lookback:]
-    # 簡化雙頂: 最後1個值 vs 之前最高值
     curr_p = float(p.iloc[-1])
     prev_high_idx = p.iloc[:-5].idxmax()
     prev_high = float(p.loc[prev_high_idx])
@@ -36,12 +34,9 @@ def find_double_divergence(price, ind, lookback=60):
     prev_low_ind = float(i.loc[prev_low_idx])
     
     curr_ind = float(i.iloc[-1])
-    prev_ind_5 = float(i.iloc[-2]) # 用黎睇拐頭
     
-    # 頂背離: 價格>=前高*0.97 (就算升破都計) 但 DIF/J 比前高低
     if curr_p >= prev_high * 0.97 and curr_ind < prev_high_ind * 0.97:
         return f"頂背離({curr_p:.2f}vs前高{prev_high:.2f},指標{curr_ind:.1f}<{prev_high_ind:.1f})"
-    # 底背離
     if curr_p <= prev_low * 1.03 and curr_ind > prev_low_ind * 1.03:
         return f"底背離({curr_p:.2f}vs前低{prev_low:.2f},指標{curr_ind:.1f}>{prev_low_ind:.1f})"
     return None
@@ -51,7 +46,6 @@ alerts=[]
 
 for etf,name_cn in ETFS.items():
     try:
-        # 1. MACD DIF背離 - 4H和週線
         macd_msgs=[]
         for interval, period, label in [("1wk","2y","週線"), ("60m","3mo","4H線")]:
             try:
@@ -69,24 +63,21 @@ for etf,name_cn in ETFS.items():
                     alerts.append(f"⚠️ {etf} MACD-DIF {label}{div}")
             except: continue
 
-        # 2. 成交量 - 日線
         df_d = yf.Ticker(etf).history(period="3mo", interval="1d", auto_adjust=True)
         if len(df_d)<20: continue
         vol_today = float(df_d['Volume'].iloc[-1])
         vol_yest = float(df_d['Volume'].iloc[-2])
         vol_ratio = vol_today / vol_yest if vol_yest else 0
-        # 換手率 >5% : 用 Volume / SharesOutstanding
         turnover_rate = 0
         try:
             shares = yf.Ticker(etf).fast_info.shares
             if shares: turnover_rate = vol_today / shares * 100
         except:
-            turnover_rate = vol_ratio * 2.5 # 備用估算
+            turnover_rate = vol_ratio * 2.5
         vol_alert = vol_ratio >= 2.0 and turnover_rate >= 5.0
         if vol_alert:
             alerts.append(f"🔥 {etf} 爆量 {vol_ratio:.1f}倍 換手{turnover_rate:.1f}% (日線)")
 
-        # 3. KDJ只看J線 - 月線
         kdj_msgs=[]
         try:
             df_m = yf.Ticker(etf).history(period="5y", interval="1mo", auto_adjust=True)
@@ -94,7 +85,6 @@ for etf,name_cn in ETFS.items():
                 j = get_kdj(df_m)
                 close_m = df_m['Close']
                 if isinstance(close_m, pd.DataFrame): close_m = close_m.iloc[:,0]
-                # J拐頭
                 j_now = float(j.iloc[-1]); j_prev = float(j.iloc[-2])
                 turning = "J拐頭向下" if j_now < j_prev else "J拐頭向上" if j_now > j_prev else ""
                 div_j = find_double_divergence(close_m, j)
@@ -103,7 +93,6 @@ for etf,name_cn in ETFS.items():
                     alerts.append(f"🔮 {etf} KDJ-J 月線{turning}{div_j}")
         except: pass
 
-        # 綜合寫入
         price = float(df_d['Close'].iloc[-1])
         signals.append({
             "date": datetime.now().strftime('%Y-%m-%d'),
@@ -143,10 +132,10 @@ for s in signals:
 html+="</table><p>"+ "<br>".join(alerts) +"</p></body></html>"
 open("index.html","w",encoding="utf-8").write(html)
 
-# --- ntfy 推送 (取代CallMeBot，更穩) ---
-import requests
-if alerts:  # 只有有觸發先發
+# --- ntfy 推送 (主用) ---
+if alerts:
     try:
+        whatsapp_message = "💰 板塊頂底雷達 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
         ntfy_topic = "sector-radar-ivan117"
         ntfy_url = f"https://ntfy.sh/{ntfy_topic}"
         requests.post(
@@ -155,11 +144,12 @@ if alerts:  # 只有有觸發先發
             headers={
                 "Title": "板塊頂底雷達",
                 "Priority": "high",
-                "Tags": "rotating_light"
+                "Tags": "rotating_light,chart_with_upwards_trend"
             },
             timeout=10
         )
         print("ntfy Sent!")
+        print(whatsapp_message)
     except Exception as e:
         print(f"ntfy Failed: {e}")
 else:
