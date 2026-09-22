@@ -41,8 +41,10 @@ all_msgs=[]
 for etf in ETFS:
     all_msgs.extend(check_divergence(etf))
 
-if all_msgs and PHONE and APIKEY:
-    text = "美股板塊DIF背離:\n" + "\n".join(all_msgs)
+if PHONE and APIKEY:
+    text = "測試：雷達上線成功！sector-div-radar Success ✅\n如果收到呢條，即係WhatsApp通知正常"
+    if all_msgs:
+        text = "美股板塊DIF背離:\n" + "\n".join(all_msgs)
     requests.post("https://textbelt.com/text", data={"phone":PHONE,"message":text,"key":APIKEY})
     print(text)
 else:
