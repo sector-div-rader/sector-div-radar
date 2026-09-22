@@ -143,17 +143,24 @@ for s in signals:
 html+="</table><p>"+ "<br>".join(alerts) +"</p></body></html>"
 open("index.html","w",encoding="utf-8").write(html)
 
-# WhatsApp
-if alerts:
+# --- ntfy 推送 (取代CallMeBot，更穩) ---
+import requests
+if alerts:  # 只有有觸發先發
     try:
-        CALLMEBOT=os.environ.get('CALLMEBOT_APIKEY','').strip()
-        PHONE=os.environ.get('PHONE','').strip()
-        if CALLMEBOT and PHONE:
-            text = f"📊 V8.0板塊雙頂底背離\n" + "\n".join(alerts[:15])
-            url=f"https://api.callmebot.com/whatsapp.php?phone={PHONE}&text={urllib.parse.quote(text)}&apikey={CALLMEBOT}"
-            requests.get(url, timeout=15)
-            print("WhatsApp OK")
+        ntfy_topic = "sector-radar-ivan117"
+        ntfy_url = f"https://ntfy.sh/{ntfy_topic}"
+        requests.post(
+            ntfy_url,
+            data=whatsapp_message.encode('utf-8'),
+            headers={
+                "Title": "板塊頂底雷達",
+                "Priority": "high",
+                "Tags": "rotating_light"
+            },
+            timeout=10
+        )
+        print("ntfy Sent!")
     except Exception as e:
-        print(f"WA error {e}")
+        print(f"ntfy Failed: {e}")
 else:
     print("今日無觸發")
