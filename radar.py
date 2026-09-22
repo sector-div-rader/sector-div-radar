@@ -1,55 +1,79 @@
-import os, requests, yfinance as yf
-from urllib.parse import quote
+import yfinance as yf, pandas as pd, numpy as np, requests, os, json, matplotlib.pyplot as plt
+from datetime import datetime
 
-ETFS = ["XLB","XLE","XLF","XLI","XLK","XLP","XLU","XLV","XLY","XLC","XLRE"]
-PHONE = os.getenv("PHONE")
-APIKEY = os.getenv("APIKEY")
+ETFS = ["XLB","XLE","XLF","XLI","XLK","XLP","XLU","XLV","XLY","XLG","XLC"]
+TEST_MODE = False
 
-def get_dif(df):
-    c = df['Close']
-    return c.ewm(span=12, adjust=False).mean() - c.ewm(span=26, adjust=False).mean()
+# Google Sheet 設定 (第4步教你開)
+SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 
-def check_div(symbol):
-    msgs=[]
-    for label, interval, period in [("W","1wk","1y"), ("4H","1h","3mo")]:
-        try:
-            df = yf.download(symbol, period=period, interval=interval, auto_adjust=True, progress=False)
-            if len(df) < 50: continue
-            if label=="4H":
-                df = df.resample("4H").last().dropna()
-                if len(df) < 50: continue
-            price = df['Close']
-            dif = get_dif(df)
-            r=20
-            p_low = price[-r:].min().item()
-            p_high = price[-r:].max().item()
-            d_low = dif[-r:].min().item()
-            d_high = dif[-r:].max().item()
-            last_p = price.iloc[-1].item()
-            last_d = dif.iloc[-1].item()
-            if last_p <= p_low*1.01 and last_d > d_low*1.05:
-                msgs.append(f"{symbol} {label} 底背離")
-            if last_p >= p_high*0.99 and last_d < d_high*0.95:
-                msgs.append(f"{symbol} {label} 頂背離")
-        except: continue
-    return msgs
+def get_dif(close, f=12, s=26):
+    ema_f = close.ewm(span=f, adjust=False).mean()
+    ema_s = close.ewm(span=s, adjust=False).mean()
+    return ema_f - ema_s
 
-all_msgs=[]
-for etf in ETFS:
-    all_msgs.extend(check_div(etf))
+def check_divergence(symbol, interval, period):
+    try:
+        df = yf.Ticker(symbol).history(period=period, interval=interval).dropna()
+        if len(df) < 60: return None
+        close = df['Close']
+        dif = get_dif(close)
+        # 簡化背離判斷: 價格新低但DIF抬高 = 底背離
+        price_low_now = close.iloc[-5:].min()
+        price_low_prev = close.iloc[-30:-5].min()
+        dif_low_now = dif.iloc[-5:].min()
+        dif_low_prev = dif.iloc[-30:-5].min()
+        
+        msg = None
+        if price_low_now < price_low_prev and dif_low_now > dif_low_prev:
+            msg = f"【底背離】{symbol} {interval}K線 價格新低但DIF抬頭 (看漲)"
+        elif close.iloc[-5:].max() > close.iloc[-30:-5].max() and dif.iloc[-5:].max() < dif.iloc[-30:-5].max():
+            msg = f"【頂背離】{symbol} {interval}K線 價格新高但DIF走弱 (看跌)"
+        
+        if msg:
+            # 畫圖
+            plt.figure()
+            plt.plot(close[-50:]); plt.plot(dif[-50:])
+            plt.title(f"{symbol} {interval} Divergence")
+            plt.savefig(f"{symbol}_{interval}.png")
+        return msg
+    except: return None
 
-# 強制測試一次先
-test_mode = False
-if test_mode:
-    text = "測試：雷達上線成功！✅ sector-div-radar Success\n你香港號 6330 6575 收到即係WhatsApp正常"
-else:
-    if not all_msgs:
-        text = ""
-    else:
-        text = "美股板塊DIF背離:\n" + "\n".join(all_msgs)
+alerts = []
+for sym in ETFS:
+    for itv, per in [("1wk","1y"), ("4h","3mo")]: # 周線同4H
+        r = check_divergence(sym, itv, per)
+        if r: alerts.append(r)
 
-print("MSG:", text)
-if text and PHONE and APIKEY:
-    url = f"https://api.callmebot.com/whatsapp.php?phone={PHONE}&text={quote(text)}&apikey={APIKEY}"
-    r = requests.get(url, timeout=20)
-    print("CALLMEBOT:", r.text)
+# KDJ J線 月K背離
+def calc_kdj(close, n=9):
+    low = close.rolling(n).min(); high = close.rolling(n).max()
+    rsv = (close - low)/(high-low)*100
+    k = rsv.ewm(com=2).mean(); d = k.ewm(com=2).mean(); j = 3*k - 2*d
+    return j
+
+for sym in ETFS:
+    try:
+        df = yf.Ticker(sym).history(period="5y", interval="1mo")
+        j = calc_kdj(df['Close'])
+        # J線背離判斷同上
+        if j.iloc[-1] < 20 and j.iloc[-1] > j.iloc[-6:-1].min() and df['Close'].iloc[-1] < df['Close'].iloc[-6:-1].min():
+            alerts.append(f"【月K KDJ-J底背離】{sym} 月線 J線低位抬頭")
+        if j.iloc[-1] > 80 and j.iloc[-1] < j.iloc[-6:-1].max() and df['Close'].iloc[-1] > df['Close'].iloc[-6:-1].max():
+            alerts.append(f"【月K KDJ-J頂背離】{sym} 月線 J線高位回落")
+    except: pass
+
+# 每日戰報
+report = f"📊 每日戰報 {datetime.now().strftime('%Y-%m-%d')}\n"
+for sym in ETFS:
+    chg = yf.Ticker(sym).history(period="2d")['Close'].pct_change().iloc[-1]*100
+    report += f"{sym}: {chg:.2f}%\n"
+
+# 發送
+apikey = os.getenv("CALLMEBOT_APIKEY")
+phone = "85263306575"
+all_msg = report + "\n" + ("\n".join(alerts) if alerts else "今日無背離")
+if not TEST_MODE:
+    requests.get(f"https://api.callmebot.com/whatsapp.php?phone={phone}&text={requests.utils.quote(all_msg)}&apikey={apikey}")
+
+print(all_msg)
