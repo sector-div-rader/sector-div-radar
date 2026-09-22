@@ -39,7 +39,7 @@ for etf in ETFS:
     all_msgs.extend(check_div(etf))
 
 # 強制測試一次先
-test_mode = True
+test_mode = False
 if test_mode:
     text = "測試：雷達上線成功！✅ sector-div-radar Success\n你香港號 6330 6575 收到即係WhatsApp正常"
 else:
