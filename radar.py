@@ -1,35 +1,49 @@
-import yfinance as yf, requests, os
-TICKERS = ["XLK","XLF","XLE","XLV","XLI","XLP","XLY","XLB","XLU","XLRE","XLC","SMH","QQQ","SPY"]
+import os, requests, yfinance as yf
+import pandas as pd
 
-def check(ticker, period, interval, label):
-    df = yf.download(ticker, period=period, interval=interval, progress=False, auto_adjust=True)
-    if len(df) < 60: return None
-    dif = df['Close'].ewm(span=12).mean() - df['Close'].ewm(span=26).mean()
-    recent = df.tail(40)
-    lows = recent.nsmallest(2, 'Close')
-    if len(lows)==2:
-        p1_idx, p2_idx = lows.index[0], lows.index[1]
-        if p1_idx < p2_idx: p1_idx, p2_idx = p2_idx, p1_idx
-        if df.loc[p1_idx, 'Close'] < df.loc[p2_idx, 'Close'] and dif.loc[p1_idx] > dif.loc[p2_idx] and dif.loc[p1_idx] < 0:
-            return f"{ticker} {label} 底背離"
-    highs = recent.nlargest(2, 'Close')
-    if len(highs)==2:
-        h1_idx, h2_idx = highs.index[0], highs.index[1]
-        if h1_idx < h2_idx: h1_idx, h2_idx = h2_idx, h1_idx
-        if df.loc[h1_idx, 'Close'] > df.loc[h2_idx, 'Close'] and dif.loc[h1_idx] < dif.loc[h2_idx] and dif.loc[h1_idx] > 0:
-            return f"{ticker} {label} 頂背離"
-    return None
+ETFS = ["XLB","XLE","XLF","XLI","XLK","XLP","XLU","XLV","XLY","XLC","XLRE"]
+PHONE = os.getenv("PHONE")
+APIKEY = os.getenv("APIKEY")
 
-msgs=[]
-for tk in TICKERS:
-    r1 = check(tk, "1y", "1wk", "週線")
-    if r1: msgs.append(r1)
-    r2 = check(tk, "60d", "4h", "4小時")
-    if r2: msgs.append(r2)
+def get_dif(df):
+    close = df['Close']
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    return ema12 - ema26
 
-if msgs:
-    text = "美股板塊DIF背離:\n" + "\n".join(msgs)
-    phone = os.getenv("PHONE")
-    apikey = os.getenv("APIKEY")
-    url = f"https://api.callmebot.com/whatsapp.php?phone={phone}&text={requests.utils.quote(text)}&apikey={apikey}"
-    requests.get(url)
+def check_divergence(symbol):
+    msgs=[]
+    for tf, interval in [("W","1wk"),("4H","1h")]:
+        try:
+            df = yf.download(symbol, period="1y", interval=interval, auto_adjust=True, progress=False)
+            if len(df) < 60: continue
+            if tf=="4H":
+                df = df.resample("4H").last().dropna()
+                if len(df) < 60: continue
+            price = df['Close']
+            dif = get_dif(df)
+            # 簡單背離：近20根，價格新低但DIF冇新低 = 底背離，新高但DIF冇新高 = 頂背離
+            recent = 20
+            p_low = price[-recent:].min()
+            p_high = price[-recent:].max()
+            d_low = dif[-recent:].min()
+            d_high = dif[-recent:].max()
+            
+            if price.iloc[-1] <= p_low*1.01 and dif.iloc[-1] > d_low*1.05:
+                msgs.append(f"{symbol} {tf} 底背離")
+            if price.iloc[-1] >= p_high*0.99 and dif.iloc[-1] < d_high*0.95:
+                msgs.append(f"{symbol} {tf} 頂背離")
+        except Exception as e:
+            continue
+    return msgs
+
+all_msgs=[]
+for etf in ETFS:
+    all_msgs.extend(check_divergence(etf))
+
+if all_msgs and PHONE and APIKEY:
+    text = "美股板塊DIF背離:\n" + "\n".join(all_msgs)
+    requests.post("https://textbelt.com/text", data={"phone":PHONE,"message":text,"key":APIKEY})
+    print(text)
+else:
+    print("No divergence: " + ",".join(all_msgs))
