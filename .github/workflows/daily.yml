@@ -14,14 +14,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install yfinance pandas requests
-      - run: python radar.py
+      - run: pip install -r requirements.txt
+      - run: python main.py
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
-      - name: 保存成績表
+          PHONE: ${{ secrets.PHONE }}
+          APIKEY: ${{ secrets.APIKEY }}
+      - name: 保存成績表+網站
         run: |
           git config user.name "radar-bot"
           git config user.email "bot@bot.com"
-          git add history.csv
-          git commit -m "update history ${{ github.run_id }}" || echo "no change"
+          git add history.csv index.html
+          git commit -m "update V6 ${{ github.run_number }}" || exit 0
           git push
