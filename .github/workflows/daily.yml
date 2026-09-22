@@ -1,22 +1,27 @@
-name: scan
+name: daily-radar
 on:
   schedule:
-    - cron: '0 2 * * 1-5'
+    - cron: '0 22 * * *' # 香港時間早上6點跑
   workflow_dispatch:
+
 jobs:
-  scan:
+  run:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install yfinance requests matplotlib
+      - run: pip install yfinance pandas requests
       - run: python radar.py
         env:
-          PHONE: ${{ secrets.PHONE }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
-      - name: Check Turnover
-        run: python turnover.py
-        env:
-          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+      - name: 保存成績表
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "bot@bot.com"
+          git add history.csv
+          git commit -m "update history ${{ github.run_id }}" || echo "no change"
+          git push
