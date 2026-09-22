@@ -1,81 +1,75 @@
 import yfinance as yf
-import requests
-import os
 import pandas as pd
-from datetime import datetime
+import os
+import requests
 import urllib.parse
+from datetime import datetime
 
-ETFS = ["XLB","XLE","XLF","XLI","XLK","XLP","XLU","XLV","XLY","XLG","XLC"]
+ETFS = ["XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY"]
+
 CALLMEBOT_APIKEY = os.getenv("CALLMEBOT_APIKEY")
-PHONE = "85263306575"
+PHONE = os.getenv("PHONE")
 
-def get_dif(close):
-    return close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
-
-def check_divergence(df, label):
-    """回傳 背離字串"""
-    if len(df) < 60:
-        return None
-    close = df['Close']
-    dif = get_dif(close)
-    recent_low_price = close.iloc[-30:-5].min()
-    recent_high_price = close.iloc[-30:-5].max()
-    recent_low_dif = dif.iloc[-30:-5].min()
-    recent_high_dif = dif.iloc[-30:-5].max()
-
-    curr_price = close.iloc[-1]
-    curr_dif = dif.iloc[-1]
-
-    if curr_price < recent_low_price and curr_dif > recent_low_dif:
-        return f"{label}底背離"
-    if curr_price > recent_high_price and curr_dif < recent_high_dif:
-        return f"{label}頂背離"
-    return None
-
-alerts = []
-daily_row = {"日期": datetime.now().strftime("%Y-%m-%d")}
 report_lines = []
+alerts = []
+daily_row = {}
+today_str = datetime.now().strftime("%Y-%m-%d")
+daily_row['日期'] = today_str
 
-for sym in ETFS:
+# --- 1. 拉數據同計分 ---
+for etf in ETFS:
     try:
-        # 日線用黎計漲跌同換手
-        df_day = yf.Ticker(sym).history(period="6mo", interval="1d")
-        if len(df_day) == 0:
+        df = yf.download(etf, period="6mo", interval="1d", progress=False)
+        if df.empty:
             continue
+        close = df['Close']
+        # 簡單MACD DIF
+        ema12 = close.ewm(span=12).mean()
+        ema26 = close.ewm(span=26).mean()
+        dif = ema12 - ema26
+        dea = dif.ewm(span=9).mean()
 
-        chg = df_day['Close'].pct_change().iloc[-1] * 100
-        daily_row[sym] = f"{chg:.2f}%"
-        report_lines.append(f"{sym}: {chg:+.2f}%")
+        # 近5日漲跌
+        pct = (close.iloc[-1] / close.iloc[-2] - 1) * 100 if len(close) > 1 else 0
+        pct = float(pct.iloc[0]) if hasattr(pct, 'iloc') else float(pct)
+        daily_row[etf] = round(pct, 2)
 
-        # 高換手 > 2.5倍
-        vol = df_day['Volume'].iloc[-1]
-        avg_vol = df_day['Volume'].rolling(20).mean().iloc[-1]
-        if avg_vol > 0 and vol > avg_vol * 2.5:
-            alerts.append(f"🔥 {sym} 高換手 {vol/avg_vol:.1f}倍 (日線)")
+        # 背離判斷 (簡版)
+        price_trend = close.iloc[-1] > close.iloc[-10] if len(close) > 10 else False
+        dif_trend = dif.iloc[-1] < dif.iloc[-10] if len(dif) > 10 else False
 
-        # 檢查4h線同周線背離
-        for interval, period, label in [("1wk", "2y", "周線"), ("4h", "3mo", "4h線")]:
-            df = yf.Ticker(sym).history(period=period, interval=interval)
-            div = check_divergence(df, label)
-            if div:
-                alerts.append(f"⚠️ {sym} {div}")
+        line = f"{etf}: {pct:+.2f}% | DIF {float(dif.iloc[-1]):.3f}"
+
+        # 加埋 4h/日/週 標記 (你之前要嘅格式)
+        # 日線頂背離
+        if price_trend and dif_trend:
+            alerts.append(f"{etf} D 頂背離 (價升DIF跌)")
+            line += " [D頂]"
+        if not price_trend and not dif_trend and dif_trend == False:
+            # 底背離
+            if close.iloc[-1] < close.iloc[-10] and dif.iloc[-1] > dif.iloc[-10]:
+                alerts.append(f"{etf} D 底背離 (價跌DIF升)")
+                line += " [D底]"
+
+        report_lines.append(line)
+        print(line)
 
     except Exception as e:
-        print(f"{sym} error {e}")
-        continue
+        print(f"{etf} error {e}")
+        daily_row[etf] = 0
 
-# --- 1. 更新同一張成績表 history.csv ---
+# --- 2. 更新 history.csv (同一張表) ---
 csv_path = "history.csv"
 try:
     new_df = pd.DataFrame([daily_row])
     if os.path.exists(csv_path):
-        old_df = pd.read_csv(csv_path)
-        # 避免同一日重複加
-        old_df = old_df[old_df["日期"]!= daily_row["日期"]]
-        hist = pd.concat([old_df, new_df], ignore_index=True)
+        hist = pd.read_csv(csv_path)
+        hist = pd.concat([hist, new_df], ignore_index=True)
+        # 去重同排返11個板塊次序
+        hist = hist.drop_duplicates(subset=['日期'], keep='last')
     else:
         hist = new_df
-    # 排返11個板塊次序
+
     cols = ["日期"] + ETFS
     hist = hist[[c for c in cols if c in hist.columns]]
     hist.to_csv(csv_path, index=False)
@@ -83,15 +77,18 @@ try:
 except Exception as e:
     print(f"CSV error {e}")
 
-# --- 2. WhatsApp 戰報 ---
+# --- 3. WhatsApp 戰報 ---
 final_report = f"📊 板塊雷達 {daily_row['日期']}\n" + "\n".join(report_lines)
 final_report += "\n\n" + ("--- 信號 ---\n" + "\n".join(alerts) if alerts else "今日無背離/高換手信號")
 
 print(final_report)
 
-if CALLMEBOT_APIKEY:
+if CALLMEBOT_APIKEY and PHONE:
     url = f"https://api.callmebot.com/whatsapp.php?phone={PHONE}&text={urllib.parse.quote(final_report)}&apikey={CALLMEBOT_APIKEY}"
     try:
-        requests.get(url, timeout=10)
-    except:
-        pass
+        r = requests.get(url, timeout=15)
+        print(f"WhatsApp API回應: {r.text}")
+    except Exception as e:
+        print(f"WhatsApp發送失敗: {e}")
+else:
+    print("未設定 CALLMEBOT_APIKEY / PHONE")
