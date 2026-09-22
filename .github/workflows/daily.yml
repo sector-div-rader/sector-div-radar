@@ -11,8 +11,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install yfinance requests
+      - run: pip install yfinance requests matplotlib
       - run: python radar.py
         env:
           PHONE: ${{ secrets.PHONE }}
-          APIKEY: ${{ secrets.APIKEY }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+      - name: Check Turnover
+        run: python turnover.py
+        env:
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
