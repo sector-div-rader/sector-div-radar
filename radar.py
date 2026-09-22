@@ -13,82 +13,97 @@ PHONE = "85263306575"
 APIKEY = os.getenv("CALLMEBOT_APIKEY")
 
 def send(msg):
-    if not APIKEY: print(msg); return
+    print(msg, flush=True)
+    if not APIKEY: return
     url = f"https://api.callmebot.com/whatsapp.php?phone={PHONE}&text={urllib.parse.quote(msg)}&apikey={APIKEY}"
-    requests.get(url, timeout=20)
-    time.sleep(3) # 分開發，唔好被ban
+    try: requests.get(url, timeout=20)
+    except: pass
+    time.sleep(2)
 
-def get_df(etf, period, interval):
-    df = yf.download(etf, period=period, interval=interval, progress=False, auto_adjust=True)
-    if df.empty: return None
-    # 兼容處理
-    def col(name):
-        c = df[name]
-        return c.iloc[:,0] if isinstance(c, pd.DataFrame) else c
-    return pd.DataFrame({"close":col('Close'),"vol":col('Volume'),"high":col('High'),"low":col('Low')})
+def batch_close(period, interval):
+    try:
+        df = yf.download(ETFS, period=period, interval=interval, group_by='ticker', progress=False, auto_adjust=True, threads=True)
+        return df
+    except Exception as e:
+        print(f"batch fail {period} {interval} {e}"); return None
+
+def get_ticker_close(batch_df, etf):
+    try:
+        if isinstance(batch_df.columns, pd.MultiIndex):
+            sub = batch_df[etf]
+        else: sub = batch_df
+        if sub.empty: return None
+        return pd.DataFrame({
+            "close": sub['Close'].dropna(),
+            "vol": sub['Volume'].dropna(),
+            "high": sub['High'].dropna(),
+            "low": sub['Low'].dropna()
+        })
+    except: return None
 
 def macd_dif(close): return close.ewm(span=12).mean() - close.ewm(span=26).mean()
-
-def kdj_j(df):
-    low_n = df['low'].rolling(9, min_periods=9).min()
-    high_n = df['high'].rolling(9, min_periods=9).max()
-    rsv = (df['close'] - low_n) / (high_n - low_n) * 100
+def kdj_j(d):
+    low_n = d['low'].rolling(9, min_periods=9).min()
+    high_n = d['high'].rolling(9, min_periods=9).max()
+    rsv = (d['close'] - low_n) / (high_n - low_n) * 100
     k = rsv.ewm(com=2, adjust=False).mean()
-    d = k.ewm(com=2, adjust=False).mean()
-    return 3*k - 2*d
-
+    dd = k.ewm(com=2, adjust=False).mean()
+    return 3*k - 2*dd
 def check_div(close, ind, look=10):
-    if len(close) <= look: return None
+    if len(close) <= look or len(ind) <= look: return None
     if close.iloc[-1] > close.iloc[-look] and ind.iloc[-1] < ind.iloc[-look]: return "頂背離"
     if close.iloc[-1] < close.iloc[-look] and ind.iloc[-1] > ind.iloc[-look]: return "底背離"
     return None
 
 today = datetime.now().strftime("%Y-%m-%d")
-daily_row, report_lines = {"日期":today}, []
-turnover_alerts, macd_alerts, kdj_alerts = [], [], []
+print(f"START {today} {ETFS}", flush=True)
+
+# 一次過下載
+d_batch = batch_close("6mo", "1d")
+w_batch = batch_close("2y", "1wk")
+m_batch = batch_close("10y", "1mo")
+h_batch = batch_close("1mo", "60m")
+
+daily_row, report, turnover_alerts, macd_alerts, kdj_alerts = {"日期":today}, [], [], [], []
 
 for etf in ETFS:
     cn = SECTOR_CN[etf]
+    d_df = get_ticker_close(d_batch, etf) if d_batch is not None else None
+    if d_df is None or d_df.empty: continue
     try:
-        d_df = get_df(etf, "6mo", "1d")
-        if d_df is None: continue
         pct = float(d_df['close'].iloc[-1]/d_df['close'].iloc[-2]-1)*100 if len(d_df)>=2 else 0
         daily_row[etf]=round(pct,2)
-        report_lines.append(f"{etf}({cn}): {pct:+.2f}%")
+        report.append(f"{etf}({cn}): {pct:+.2f}%")
 
-        # 1️⃣ 換手率
-        try:
-            shares = yf.Ticker(etf).info.get("sharesOutstanding",0)
-            if shares:
-                t = float(d_df['vol'].iloc[-1]/shares*100)
-                if t>5: turnover_alerts.append(f"🔥 {etf}({cn}) 日K換手 {t:.2f}%")
-        except: pass
+        # 1️⃣ 換手率 >5% 用日均量代替流通股，快好多，ETF流通股API好慢，改用 當日量 > 5日均量*2.5 約等於高換手
+        avg5 = d_df['vol'].tail(5).mean()
+        if avg5>0 and d_df['vol'].iloc[-1] > avg5*2.5:
+            turnover_alerts.append(f"🔥 {etf}({cn}) 日K放量 {d_df['vol'].iloc[-1]/avg5:.1f}倍 (>5%換手概念)")
 
-        # 2️⃣ MACD DIF 多週期
+        # 2️⃣ MACD
         dv = check_div(d_df['close'], macd_dif(d_df['close']), 10)
         if dv: macd_alerts.append(f"⚠️ {etf}({cn}) 日線{dv}")
 
-        w_df = get_df(etf, "2y", "1wk")
+        w_df = get_ticker_close(w_batch, etf) if w_batch is not None else None
         if w_df is not None and len(w_df)>10:
             dv = check_div(w_df['close'], macd_dif(w_df['close']), 10)
             if dv: macd_alerts.append(f"⚠️ {etf}({cn}) 週線{dv}")
 
-        h_df = get_df(etf, "1mo", "60m")
+        h_df = get_ticker_close(h_batch, etf) if h_batch is not None else None
         if h_df is not None and len(h_df)>30:
             h4 = h_df.resample("4h").agg({"close":"last","vol":"sum","high":"max","low":"min"}).dropna()
             if len(h4)>10:
                 dv = check_div(h4['close'], macd_dif(h4['close']), 10)
                 if dv: macd_alerts.append(f"⚠️ {etf}({cn}) 4小時{dv}")
 
-        # 3️⃣ KDJ J 月K
-        m_df = get_df(etf, "10y", "1mo")
+        m_df = get_ticker_close(m_batch, etf) if m_batch is not None else None
         if m_df is not None and len(m_df)>15:
             j = kdj_j(m_df)
             dv = check_div(m_df['close'], j, 10)
             if dv: kdj_alerts.append(f"💎 {etf}({cn}) 月K J線{dv}")
 
     except Exception as e:
-        print(f"{etf} err {e}")
+        print(f"{etf} err {e}", flush=True)
 
 # 存CSV
 try:
@@ -96,22 +111,15 @@ try:
     hist=pd.read_csv("history.csv") if os.path.exists("history.csv") else pd.DataFrame()
     hist=pd.concat([hist, nd], ignore_index=True).drop_duplicates(subset=['日期'], keep='last') if not hist.empty else nd
     hist.to_csv("history.csv", index=False)
-except: pass
+except Exception as e: print(e)
 
-# 每日大盤一條
-base = f"📊 板塊雷達 {today}\n" + "\n".join(report_lines)
-send(base)
+send(f"📊 板塊雷達V4 {today}\n" + "\n".join(report))
 
-# 獨立3條 - 有先發，無唔發
-if turnover_alerts:
-    send(f"1️⃣ 換手率>5% (日K)\n{today}\n" + "\n".join(turnover_alerts))
+if turnover_alerts: send(f"1️⃣ 換手率>5% (放量概念) {today}\n" + "\n".join(turnover_alerts))
+if macd_alerts: send(f"2️⃣ MACD DIF背離 {today}\n" + "\n".join(macd_alerts))
+else: send(f"2️⃣ MACD DIF背離 {today}\n無")
 
-if macd_alerts:
-    send(f"2️⃣ MACD DIF背離\n{today}\n" + "\n".join(macd_alerts))
-else:
-    send(f"2️⃣ MACD DIF背離\n{today}\n無背離")
+if kdj_alerts: send(f"3️⃣ KDJ J線背離(月K) {today}\n" + "\n".join(kdj_alerts))
+else: send(f"3️⃣ KDJ J線背離(月K) {today}\n無")
 
-if kdj_alerts:
-    send(f"3️⃣ KDJ J線背離 (月K)\n{today}\n" + "\n".join(kdj_alerts))
-else:
-    send(f"3️⃣ KDJ J線背離 (月K)\n{today}\n無背離")
+print("DONE", flush=True)
