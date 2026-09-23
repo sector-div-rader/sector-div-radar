@@ -1,4 +1,5 @@
 yfinance
-supabase
 pandas
+supabase
 requests
+feedparser
