@@ -73,7 +73,6 @@ for etf,name_cn in ETFS.items():
             alerts.append(f"🔥 {etf} 爆量 {vol_ratio:.1f}倍 換手{turnover_rate:.1f}% (日線)")
 
         kdj_msgs=[]
-        # --- 日線、週線 (新邏輯) ---
         for k_interval, k_period, k_label in [("1d","6mo","日線"), ("1wk","2y","週線")]:
             try:
                 df_k = yf.Ticker(etf).history(period=k_period, interval=k_interval, auto_adjust=True)
@@ -89,12 +88,16 @@ for etf,name_cn in ETFS.items():
                 turning = "J拐頭向下" if j_now < j_prev else "J拐頭向上" if j_now > j_prev else ""
                 div_j = find_double_divergence(close_k, j, lookback=60)
                 if div_j and turning:
+                    # BUG FIX: 頂背離必須向下拐，底背離必須向上拐
+                    is_top = "頂背離" in div_j
+                    is_bottom = "底背離" in div_j
+                    valid = (is_top and "向下" in turning) or (is_bottom and "向上" in turning)
+                    if not valid: continue
                     kdj_msgs.append(f"{k_label}{turning}{div_j}")
                     icon = "📅" if k_label=="週線" else "📌"
                     alerts.append(f"{icon} {etf} KDJ-J {k_label}{turning}{div_j} J={j_now:.1f}")
             except: continue
 
-        # --- 月線 (用返你V8.0舊邏輯，保住XLF) ---
         try:
             df_m = yf.Ticker(etf).history(period="5y", interval="1mo", auto_adjust=True)
             if len(df_m)>=30:
@@ -106,6 +109,11 @@ for etf,name_cn in ETFS.items():
                 turning = "J拐頭向下" if j_now < j_prev else "J拐頭向上" if j_now > j_prev else ""
                 div_j = find_double_divergence(close_m, j)
                 if div_j and turning:
+                    # BUG FIX: 頂背離必須向下拐，底背離必須向上拐
+                    is_top = "頂背離" in div_j
+                    is_bottom = "底背離" in div_j
+                    valid = (is_top and "向下" in turning) or (is_bottom and "向上" in turning)
+                    if not valid: continue
                     kdj_msgs.append(f"月線{turning}{div_j}")
                     alerts.append(f"🔮 {etf} KDJ-J 月線{turning}{div_j} J={j_now:.1f}")
         except: pass
@@ -142,7 +150,7 @@ except Exception as e:
     print(f"Supabase error {e}")
 
 # 網頁
-html=f"<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>V8.2</title><style>body{{font-family:sans-serif;padding:10px;font-size:12px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:5px}}</style></head><body><h3>V8.2 日週月共振版 {datetime.now().strftime('%Y-%m-%d')}</h3><table><tr><th>ETF</th><th>MACD-DIF背離(週/4H)</th><th>爆量(日)</th><th>KDJ-J背離(日/週/月)</th></tr>"
+html=f"<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>V8.2.1</title><style>body{{font-family:sans-serif;padding:10px;font-size:12px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:5px}}</style></head><body><h3>V8.2.1 BugFix版 {datetime.now().strftime('%Y-%m-%d')}</h3><table><tr><th>ETF</th><th>MACD-DIF背離(週/4H)</th><th>爆量(日)</th><th>KDJ-J背離(日/週/月)</th></tr>"
 for s in signals:
     html+=f"<tr><td>{s['etf']}{s['name_cn']}</td><td>{s['level']}</td><td>{s['strength']:.1f}x / {s['turnover']:.1f}%</td><td>{s['kdj']}</td></tr>"
 html+="</table><p>"+ "<br>".join(alerts) +"</p></body></html>"
@@ -151,13 +159,13 @@ open("index.html","w",encoding="utf-8").write(html)
 # --- ntfy 推送 ---
 if alerts:
     try:
-        message = "板塊頂底雷達 V8.2 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
+        message = "板塊頂底雷達 V8.2.1 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
         topic = "sector-radar-ivan117"
         requests.post(
             f"https://ntfy.sh/{topic}",
             data=message.encode('utf-8'),
             headers={
-                "Title": "Sector Radar Alert V8.2",
+                "Title": "Sector Radar Alert V8.2.1",
                 "Priority": "high",
                 "Tags": "rotating_light"
             },
