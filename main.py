@@ -3,7 +3,7 @@ from datetime import datetime
 
 ETFS = {'XLE':'能源','XLF':'金融','XLK':'科技','XLV':'醫療','XLI':'工業','XLP':'必需消費','XLY':'可選消費','XLB':'原材料','XLU':'公用','XLRE':'地產','XLC':'通訊'}
 
-def get_dif(close, fast=5, slow=26): # 同富途一致 5,26
+def get_dif(close, fast=5, slow=26):
     return close.ewm(span=fast, adjust=False).mean() - close.ewm(span=slow, adjust=False).mean()
 
 def get_kdj(df, n=9):
@@ -15,22 +15,17 @@ def get_kdj(df, n=9):
     return 3*k - 2*d
 
 def find_div(price, ind, lookback=60):
-    # FIX: 搵最近20日嘅局部高低點，唔係成60日最高
     if len(price) < 30: return None
     p = price.iloc[-lookback:].copy()
     i = ind.iloc[-lookback:].copy()
-    curr_p = float(p.iloc[-1])
-    curr_i = float(i.iloc[-1])
+    curr_p = float(p.iloc[-1]); curr_i = float(i.iloc[-1])
     if pd.isna(curr_p) or pd.isna(curr_i): return None
-    
-    # 排除最近5根，喺最近20根入面搵
     search = p.iloc[:-5].iloc[-20:]
     if len(search) < 5: return None
-    peak_idx = search.idxmax()
-    trough_idx = search.idxmin()
+    peak_idx = search.idxmax(); trough_idx = search.idxmin()
     peak_p = float(p.loc[peak_idx]); peak_i = float(i.loc[peak_idx])
     trough_p = float(p.loc[trough_idx]); trough_i = float(i.loc[trough_idx])
-
+    # 包含升破/跌破：價破前高前低都算
     if curr_p >= peak_p * 0.98 and curr_i < peak_i * 0.97:
         return f"頂背離({curr_p:.2f}vs前高{peak_p:.2f},指標{curr_i:.1f}<{peak_i:.1f})"
     if curr_p <= trough_p * 1.02 and curr_i > trough_i * 1.03:
@@ -41,15 +36,15 @@ signals=[]; alerts=[]
 
 for etf, name_cn in ETFS.items():
     try:
-        # FIX: 一次過下載，唔好下載4次
-        df_d = yf.Ticker(etf).history(period="6mo", interval="1d", auto_adjust=True)
-        df_w = yf.Ticker(etf).history(period="2y", interval="1wk", auto_adjust=True)
-        df_60m = yf.Ticker(etf).history(period="3mo", interval="60m", auto_adjust=True)
+        t = yf.Ticker(etf)
+        df_d = t.history(period="6mo", interval="1d", auto_adjust=True)
+        df_w = t.history(period="2y", interval="1wk", auto_adjust=True)
+        df_m = t.history(period="10y", interval="1mo", auto_adjust=True)
+        df_60m = t.history(period="3mo", interval="60m", auto_adjust=True)
         if len(df_d) < 30: continue
-
         macd_msgs=[]; kdj_msgs=[]
         
-        # 週線MACD
+        # MACD - 淨睇DIF
         if len(df_w) >= 60:
             dif_w = get_dif(df_w['Close'])
             div = find_div(df_w['Close'], dif_w)
@@ -57,7 +52,6 @@ for etf, name_cn in ETFS.items():
                 macd_msgs.append(f"週線{div}")
                 alerts.append(f"⚠️ {etf} MACD週線{div}")
 
-        # FIX Bug1: 4H線 volume要用sum，4h小寫
         if len(df_60m) >= 60:
             df_4h = df_60m.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
             if len(df_4h) >= 60:
@@ -67,25 +61,31 @@ for etf, name_cn in ETFS.items():
                     macd_msgs.append(f"4H線{div}")
                     alerts.append(f"⚠️ {etf} MACD-4H{div}")
 
-        # FIX Bug4: 爆量門檻放寬 1.5倍 + 2%
+        # 換手率 - 用get_info唔用fast_info
         vol_today = float(df_d['Volume'].iloc[-1])
-        vol_yest = float(df_d['Volume'].iloc[-2])
+        vol_yest = float(df_d['Volume'].iloc[-2]) if len(df_d)>=2 else vol_today
         vol_ratio = vol_today / vol_yest if vol_yest else 0
-        turnover = 0
+        turnover = 0; shares = None
         try:
-            shares = yf.Ticker(etf).fast_info.shares
-            if shares: turnover = vol_today / shares * 100
+            info = t.get_info()
+            shares = info.get('sharesOutstanding') or info.get('impliedSharesOutstanding')
         except: pass
-        if vol_ratio >= 1.5: # 唔再卡死5%
-            alerts.append(f"🔥 {etf} 爆量{vol_ratio:.1f}倍 換手{turnover:.1f}%")
-        
-        # KDJ 日/週
-        for df_k, label, icon in [(df_d, "日線", "📌"), (df_w, "週線", "📅")]:
+        if shares and shares > 0:
+            turnover = vol_today / shares * 100
+        else:
+            turnover = vol_today / 900_000_000 * 100
+
+        if vol_ratio >= 1.5:
+            alerts.append(f"🔥 {etf} 爆量{vol_ratio:.1f}倍 換手{turnover:.2f}%")
+
+        # KDJ - 淨睇J，加埋月線
+        for df_k, label, icon in [(df_d, "日線", "📌"), (df_w, "週線", "📅"), (df_m, "月線", "🗓️")]:
             if len(df_k) < 30: continue
             j = get_kdj(df_k).dropna()
             if len(j) < 5: continue
             close_k = df_k['Close'].loc[j.index]
             div_j = find_div(close_k, j)
+            if len(j) < 2: continue
             j_now = float(j.iloc[-1]); j_prev = float(j.iloc[-2])
             turning = "J拐頭向下" if j_now < j_prev else "J拐頭向上" if j_now > j_prev else ""
             if div_j and turning:
@@ -101,38 +101,43 @@ for etf, name_cn in ETFS.items():
             "k": round(turnover,2), "d":0,"j":0,
             "kdj": ";".join(kdj_msgs) if kdj_msgs else "無",
             "turnover": turnover,
-            "extra": f"MACD:{'|'.join(macd_msgs) if macd_msgs else '無'}; VOL:{vol_ratio:.1f}x"
+            "extra": f"VOL:{vol_ratio:.1f}x / {turnover:.2f}%"
         })
     except Exception as e:
         print(f"skip {etf} {e}")
         continue
 
-# FIX Bug5: Supabase delete改用gte，唔會被RLS卡死
+# Supabase - name_cn改name_en
 try:
     from supabase import create_client
     SUPABASE_URL=os.environ.get('SUPABASE_URL','').strip()
     SUPABASE_KEY=os.environ.get('SUPABASE_KEY','').strip()
     if SUPABASE_URL and SUPABASE_KEY:
         sb=create_client(SUPABASE_URL, SUPABASE_KEY)
-        try: sb.table("signals").delete().gte("id",0).execute()
-        except Exception as e: print(f"delete skip {e}")
-        sb.table("signals").insert(signals).execute()
-        print(f"Supabase OK {len(signals)}")
-    else:
-        print("Supabase secrets missing")
+        sb.table("signals").delete().neq("etf","XXXX").execute()
+        to_insert = []
+        for s in signals:
+            to_insert.append({
+                "date": s["date"], "etf": s["etf"], "name_en": s["name_cn"],
+                "type": s["type"], "level": s["level"], "price": s["price"],
+                "strength": s["strength"], "k": s["k"], "d": s["d"], "j": s["j"],
+                "kdj": s["kdj"], "turnover": s["turnover"], "extra": s["extra"]
+            })
+        sb.table("signals").insert(to_insert).execute()
+        print(f"Supabase OK {len(to_insert)}")
 except Exception as e:
     print(f"Supabase error {e}")
 
-html=f"<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>V9</title><style>body{{font-family:sans-serif;padding:10px;font-size:12px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:5px}}</style></head><body><h3>V9 BugFix全修版 {datetime.now().strftime('%Y-%m-%d')}</h3><table><tr><th>ETF</th><th>MACD背離</th><th>爆量</th><th>KDJ背離</th></tr>"
+html=f"<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>V9.3</title><style>body{{font-family:sans-serif;padding:10px;font-size:12px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:5px}}</style></head><body><h3>V9.3 月線+換手修復 {datetime.now().strftime('%Y-%m-%d %H:%M')}</h3><table><tr><th>ETF</th><th>MACD-DIF背離</th><th>爆量/換手</th><th>KDJ-J背離</th></tr>"
 for s in signals:
-    html+=f"<tr><td>{s['etf']}{s['name_cn']}</td><td>{s['level']}</td><td>{s['strength']:.1f}x / {s['turnover']:.1f}%</td><td>{s['kdj']}</td></tr>"
+    html+=f"<tr><td>{s['etf']}{s['name_cn']}</td><td>{s['level']}</td><td>{s['strength']:.1f}x / {s['turnover']:.2f}%</td><td>{s['kdj']}</td></tr>"
 html+="</table><p>"+ "<br>".join(alerts) +"</p></body></html>"
 open("index.html","w",encoding="utf-8").write(html)
 
 if alerts:
     try:
-        message = f"雷達 V9 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n" + "\n".join(alerts)
-        requests.post(f"https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title":"Sector Radar V9","Priority":"high","Tags":"rotating_light"}, timeout=10)
+        message = f"雷達 V9.3 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n" + "\n".join(alerts)
+        requests.post(f"https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title":"Sector Radar V9.3","Priority":"high"}, timeout=10)
         print("ntfy Sent!")
     except Exception as e: print(f"ntfy Failed {e}")
 else: print("今日無觸發")
