@@ -73,19 +73,25 @@ for etf,name_cn in ETFS.items():
             alerts.append(f"🔥 {etf} 爆量 {vol_ratio:.1f}倍 換手{turnover_rate:.1f}% (日線)")
 
         kdj_msgs=[]
-        try:
-            df_m = yf.Ticker(etf).history(period="5y", interval="1mo", auto_adjust=True)
-            if len(df_m)>=30:
-                j = get_kdj(df_m)
-                close_m = df_m['Close']
-                if isinstance(close_m, pd.DataFrame): close_m = close_m.iloc[:,0]
+        for k_interval, k_period, k_label in [("1d","6mo","日線"), ("1wk","2y","週線"), ("1mo","5y","月線")]:
+            try:
+                df_k = yf.Ticker(etf).history(period=k_period, interval=k_interval, auto_adjust=True)
+                if len(df_k)<30: continue
+                j = get_kdj(df_k)
+                close_k = df_k['Close']
+                if isinstance(close_k, pd.DataFrame): close_k = close_k.iloc[:,0]
+                if isinstance(j, pd.DataFrame): j = j.iloc[:,0]
+                j = j.dropna()
+                close_k = close_k.loc[j.index]
+                if len(j)<5: continue
                 j_now = float(j.iloc[-1]); j_prev = float(j.iloc[-2])
                 turning = "J拐頭向下" if j_now < j_prev else "J拐頭向上" if j_now > j_prev else ""
-                div_j = find_double_divergence(close_m, j)
+                div_j = find_double_divergence(close_k, j, lookback=60)
                 if div_j and turning:
-                    kdj_msgs.append(f"月線{turning}{div_j}")
-                    alerts.append(f"🔮 {etf} KDJ-J 月線{turning}{div_j}")
-        except: pass
+                    kdj_msgs.append(f"{k_label}{turning}{div_j}")
+                    icon = "🔮" if k_label=="月線" else "📅" if k_label=="週線" else "📌"
+                    alerts.append(f"{icon} {etf} KDJ-J {k_label}{turning}{div_j} J={j_now:.1f}")
+            except: continue
 
         price = float(df_d['Close'].iloc[-1])
         signals.append({
@@ -119,22 +125,22 @@ except Exception as e:
     print(f"Supabase error {e}")
 
 # 網頁
-html=f"<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>V8.0</title><style>body{{font-family:sans-serif;padding:10px;font-size:12px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:5px}}</style></head><body><h3>V8.0 雙頂雙底背離版 {datetime.now().strftime('%Y-%m-%d')}</h3><table><tr><th>ETF</th><th>MACD-DIF背離(週/4H)</th><th>爆量(日)</th><th>KDJ-J背離(月)</th></tr>"
+html=f"<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>V8.1 三級KDJ版</title><style>body{{font-family:sans-serif;padding:10px;font-size:12px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:5px}}</style></head><body><h3>V8.1 日週月KDJ共振版 {datetime.now().strftime('%Y-%m-%d')}</h3><table><tr><th>ETF</th><th>MACD-DIF背離(週/4H)</th><th>爆量(日)</th><th>KDJ-J背離(日/週/月)</th></tr>"
 for s in signals:
     html+=f"<tr><td>{s['etf']}{s['name_cn']}</td><td>{s['level']}</td><td>{s['strength']:.1f}x / {s['turnover']:.1f}%</td><td>{s['kdj']}</td></tr>"
 html+="</table><p>"+ "<br>".join(alerts) +"</p></body></html>"
 open("index.html","w",encoding="utf-8").write(html)
 
-# --- ntfy 推送 (唔用WhatsApp) ---
+# --- ntfy 推送 ---
 if alerts:
     try:
-        message = "板塊頂底雷達 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
+        message = "板塊頂底雷達 V8.1 " + datetime.now().strftime('%Y-%m-%d %H:%M') + "\n" + "\n".join(alerts)
         topic = "sector-radar-ivan117"
         requests.post(
             f"https://ntfy.sh/{topic}",
             data=message.encode('utf-8'),
             headers={
-                "Title": "Sector Radar Alert",
+                "Title": "Sector Radar Alert V8.1",
                 "Priority": "high",
                 "Tags": "rotating_light"
             },
