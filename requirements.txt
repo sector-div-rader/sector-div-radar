@@ -1,5 +1,5 @@
 yfinance
 pandas
-supabase
 requests
-feedparser
+supabase
+matplotlib
