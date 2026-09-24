@@ -1,4 +1,4 @@
-# radar_v11_index.py - 大勢版：指數共振 + 背離天數 + 中文板塊名
+# radar_v11_index.py - 大勢版：指數共振 + 背離天數 + 中文板塊名 + ntfy格式修復
 import yfinance as yf
 import os
 import pandas as pd
@@ -243,13 +243,22 @@ def main():
         header += advice
 
         message = f"Radar V11 {now_str}\n\n" + "\n\n".join(header + [""] + final_msgs)
-        title = f"Risk:{risk_score} T{tech_score}C{cycle_score}I{index_score}"
+        title = f"Risk{risk_score} T{tech_score}C{cycle_score}I{index_score}"
         pri = "high" if risk_score >= 8 else "default"
 
     print("\n" + message + "\n")
     try:
-        requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'),
-                      headers={"Title": title, "Priority": pri}, timeout=10)
+        requests.post(
+            "https://ntfy.sh/sector-radar-ivan117",
+            data=message.encode('utf-8'),
+            headers={
+                "Title": title.encode('utf-8'),
+                "Priority": pri,
+                "Content-Type": "text/plain; charset=utf-8",
+                "Markdown": "yes", # 重點：ntfy 用 markdown 模式保留換行同 emoji
+            },
+            timeout=10
+        )
     except: pass
 
 if __name__ == "__main__":
