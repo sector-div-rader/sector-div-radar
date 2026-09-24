@@ -1,4 +1,4 @@
-# main.py - NQ 0DTE 終極全功能晨報腳本 (修復 SyntaxError 語法問題)
+# main.py - NQ 0DTE 終極全功能晨報腳本
 import yfinance as yf
 import os, smtplib, traceback
 import pandas as pd
@@ -15,13 +15,26 @@ EMAIL_CONFIG = {
     'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
 }
 
+# 剔除 QQQ，補齊 10 大行業板塊 ETF
 ALL_TARGETS = {
-    'NQ=F': {'name':'納指100期貨','sticker':'📱','weight':5,'index':'NDX'},
-    'ES=F': {'name':'標普500期貨','sticker':'📈','weight':5,'index':'SPX'},
-    'QQQ':  {'name':'納指100ETF','sticker':'💻','weight':5,'index':'NDX'},
-    'SMH':  {'name':'美股半導體(核心)','sticker':'💾','weight':4,'index':'NDX'},
-    'IGV':  {'name':'美股軟件服務','sticker':'💿','weight':3,'index':'NDX'},
-    '^VIX': {'name':'恐慌指數','sticker':'😱','weight':3,'index':'VIX'},
+    # 核心期貨與指數
+    'NQ=F': {'name':'納指100期貨','sticker':'📱','weight':5,'category':'TECH'},
+    'ES=F': {'name':'標普500期貨','sticker':'📈','weight':4,'category':'INDEX'},
+    '^VIX': {'name':'恐慌指數','sticker':'😱','weight':3,'category':'INDEX'},
+    
+    # 科技與科技衍生板塊
+    'SMH':  {'name':'美股半導體(核心)','sticker':'💾','weight':4,'category':'TECH'},
+    'IGV':  {'name':'美股軟件服務','sticker':'💿','weight':3,'category':'TECH'},
+    'XLC':  {'name':'通訊服務ETF','sticker':'📡','weight':3,'category':'TECH'},
+    'XLY':  {'name':'非必需消費ETF','sticker':'🛍️','weight':3,'category':'CYCLICAL'},
+    
+    # 週期與防禦板塊
+    'XLF':  {'name':'金融板塊ETF','sticker':'🏦','weight':3,'category':'CYCLICAL'},
+    'XLE':  {'name':'能源板塊ETF','sticker':'🛢️','weight':3,'category':'CYCLICAL'},
+    'XLI':  {'name':'工業板塊ETF','sticker':'⚙️','weight':3,'category':'CYCLICAL'},
+    'XLV':  {'name':'醫療保健ETF','sticker':'🏥','weight':2,'category':'DEFENSIVE'},
+    'XLP':  {'name':'必需消費ETF','sticker':'🛒','weight':2,'category':'DEFENSIVE'},
+    'XLU':  {'name':'公用事業ETF','sticker':'⚡','weight':2,'category':'DEFENSIVE'},
 }
 
 # ==================== 技術指標計算 ====================
@@ -30,7 +43,6 @@ def calculate_custom_indicators(df):
     close = df['Close']
     high = df['High']
     low = df['Low']
-    vol = df['Volume']
 
     ema50   = close.ewm(span=50, adjust=False).mean()
     ema700  = close.ewm(span=700, adjust=False).mean() if len(df) >= 700 else pd.Series(index=df.index)
@@ -111,10 +123,76 @@ def scan_asset(t, info):
         except: pass
     return sigs
 
-# ==================== 關鍵數據計算 (Pivot + 隔夜) ====================
+# ==================== 細分風險評分計算引擎 ====================
+
+def calculate_detailed_risk_score(sigs):
+    level_weights = {'M': 4.0, 'W': 4.0, 'D': 2.5, '4H': 1.5}
+    
+    tech_score = 0.0
+    cyclical_score = 0.0
+    defensive_score = 0.0
+
+    for s in sigs:
+        base_w = ALL_TARGETS.get(s['ticker'], {}).get('weight', 3)
+        lvl_w = level_weights.get(s['level'], 1.5)
+        cat = ALL_TARGETS.get(s['ticker'], {}).get('category', 'CYCLICAL')
+
+        score_item = base_w * lvl_w
+
+        if cat == 'TECH':
+            tech_score += score_item * 1.5
+        elif cat == 'DEFENSIVE':
+            defensive_score += score_item * 0.8
+        else:
+            cyclical_score += score_item * 1.0
+
+    total_score = round(tech_score + cyclical_score + defensive_score, 1)
+
+    if total_score >= 35:
+        rating = "🚨🚨 極高轉折/變盤風險 (強烈反轉預警)"
+    elif total_score >= 25:
+        rating = "🚨 高轉折風險 (密切留意邊界)"
+    elif total_score >= 15:
+        rating = "⚠️ 中度波動風險 (局部背離)"
+    elif total_score >= 8:
+        rating = "🟢 低風險/偏趨勢 (少數背離)"
+    else:
+        rating = "🟢🟢 極低風險 (順勢運行)"
+
+    breakdown = (f"總分: {total_score} | 科技權重: {round(tech_score, 1)} / "
+                 f"週期權重: {round(cyclical_score, 1)} / "
+                 f"防禦權重: {round(defensive_score, 1)}")
+
+    return rating, breakdown
+
+# ==================== 關鍵數據與日曆 ====================
+
+def get_today_calendar_events():
+    now_hkt = datetime.now(timezone(timedelta(hours=8)))
+    weekday = now_hkt.weekday()
+    
+    events = []
+    if weekday == 3:
+        events.append("20:30 HKT | 🇺🇸 美國初請失業金人數 (Initial Jobless Claims)")
+    elif weekday == 4:
+        events.append("20:30 HKT | 🇺🇸 美國核心 PCE / 核心 CPI / 耐久財訂單數據")
+        
+    events.append("21:30 HKT | 🔔 美股常規盤正式開盤 (0DTE 主要流動性湧入)")
+    events.append("22:00 HKT | 🇺🇸 密歇根大學消費者信心指數 / ISM 採購經理人指數 (若有)")
+    
+    lines = ["📅 【今晚 0DTE 關鍵日曆與催化劑時間軸】："]
+    for ev in events:
+        lines.append(f"   * {ev}")
+        
+    lines.extend([
+        "",
+        "🛡️ 【0DTE 日曆風控鐵律】：",
+        "   1. 重大數據發佈前 15 分鐘（如 20:15）：建議平掉所有 15s/1m 極短線 0DTE 頭寸，防範雙向插針殺 IV。",
+        "   2. 數據發佈後 15 分鐘（20:45 後）：待 1m EMA 700-1000 帶重新定型並出現方向突破，再順勢尋找進場點。"
+    ])
+    return "\n".join(lines)
 
 def get_overnight_and_key_levels():
-    """擷取隔夜行情與 NQ=F Pivot 關鍵點位"""
     try:
         nq = yf.Ticker('NQ=F').history(period='5d', interval='1d')
         es = yf.Ticker('ES=F').history(period='5d', interval='1d')
@@ -130,7 +208,6 @@ def get_overnight_and_key_levels():
 
         header = f"🌐 隔夜期貨 (09:00 HKT): NQ: {nq_c:,.1f} ({nq_chg:+.2f}%) | ES: {es_c:,.1f} ({es_chg:+.2f}%) | VIX: {vix_c:.1f} ({vix_chg:+.2f}%)"
 
-        # Pivot 計算
         high_p = nq['High'].iloc[-2]
         low_p = nq['Low'].iloc[-2]
         close_p = nq['Close'].iloc[-2]
@@ -154,7 +231,6 @@ def get_overnight_and_key_levels():
         return "🌐 隔夜數據擷取失敗", "📍 Key Levels 計算失敗"
 
 def get_nq_custom_chart_status():
-    """1m 圖 EMA 700-1000 帶與 3500 形態監測"""
     try:
         raw_df = yf.Ticker('NQ=F').history(period='7d', interval='1m')
         if len(raw_df) < 500: return "NQ 1m 數據不足"
@@ -184,17 +260,14 @@ def get_nq_custom_chart_status():
             lines.append(f"   * 📍 1m EMA 700-1000 帶範圍 : {band_bot:.1f} - {band_top:.1f}")
             lines.append(f"     └─ 形態: {inner_status}")
             
-            # 修復語法：改用標準 if-elif-else 結構
             if not np.isnan(ema3500):
                 lines.append(f"   * 🏛️ 1m EMA 3500 鐵板位 : {ema3500:.1f}")
-                
                 if ema3500 > band_top:
                     cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (1m 級別長線壓制)"
                 elif ema3500 < band_bot:
                     cross_status = "🟢 【EMA 3500 在 700-1000 帶下方】 (1m 級別標準多頭)"
                 else:
                     cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (1m 長短線籌碼交織，極易劇烈洗盤！)"
-                    
                 lines.append(f"     └─ 穿越狀態: {cross_status}")
             
             lines.extend(["   --------------------------------------------------", f"   🎯 實戰戰術指引：{inner_hint}"])
@@ -202,23 +275,65 @@ def get_nq_custom_chart_status():
     except Exception as e:
         return f"1m 均線帶形態監測失敗: {e}"
 
+# ==================== 背離多週期整合與打架檢測 ====================
+
+def process_and_group_signals(sigs):
+    grouped = {}
+    conflicts = []
+    level_order = {'4H': 1, 'D': 2, 'W': 3, 'M': 4}
+
+    for s in sigs:
+        t = s['ticker']
+        key = (t, s['dir'], s['ind'])
+        if key not in grouped:
+            grouped[key] = {
+                'ticker': t, 'name': s['name'], 'dir': s['dir'],
+                'ind': s['ind'], 'levels': [], 'info': s
+            }
+        grouped[key]['levels'].append(s['level'])
+
+    result_lines = []
+    ticker_dirs = {}
+
+    for key, data in grouped.items():
+        t, direction, ind = key
+        if t not in ticker_dirs: ticker_dirs[t] = set()
+        ticker_dirs[t].add(direction)
+
+        sorted_lvls = sorted(data['levels'], key=lambda x: level_order.get(x, 99))
+        lvl_str = "+".join(sorted_lvls)
+        
+        emoji = '🚨' if t in ['NQ=F', 'SMH'] else '⚠️'
+        line = f"{emoji} {t} | {lvl_str} {direction}背離 [{ind}] | {data['name']}"
+        result_lines.append(line)
+
+    for t, dirs in ticker_dirs.items():
+        if '頂' in dirs and '底' in dirs:
+            name = ALL_TARGETS.get(t, {}).get('name', t)
+            conflicts.append(f"⚡ 【多空衝突/背離打架】: {t} ({name}) 同時出現大/小週期「頂背離 + 底背離」！盤面劇烈震盪洗盤，建議觀望或緊貼 15s/1m 帶狀止損。")
+
+    return result_lines, conflicts
+
+# ==================== 郵件組裝 ====================
+
 def build_email_body(sigs):
     now = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
     overnight_str, levels_str = get_overnight_and_key_levels()
     nq_status = get_nq_custom_chart_status()
+    calendar_str = get_today_calendar_events()
     
-    # 風險評分
-    tech = sum(1 for s in sigs if s['index'] == 'NDX')
-    risk_score = len(sigs) * 2 + tech * 3
-    rating = "🚨 極高轉折風險" if risk_score >= 12 else "⚠️ 中高轉折風險" if risk_score >= 7 else "🟢 溫和波動"
+    grouped_sig_lines, conflict_lines = process_and_group_signals(sigs)
+    
+    # 計算細分風險評分 (純背離分數)
+    rating, breakdown_str = calculate_detailed_risk_score(sigs)
     
     # 大局背景與戰術
-    nq_4h_top = [s for s in sigs if s['ticker'] in ['NQ=F', 'QQQ'] and s['level'] == '4H' and s['dir'] == '頂']
-    nq_4h_bot = [s for s in sigs if s['ticker'] in ['NQ=F', 'QQQ'] and s['level'] == '4H' and s['dir'] == '底']
+    nq_4h_top = [s for s in sigs if s['ticker'] == 'NQ=F' and s['level'] == '4H' and s['dir'] == '頂']
+    nq_4h_bot = [s for s in sigs if s['ticker'] == 'NQ=F' and s['level'] == '4H' and s['dir'] == '底']
     big_top = [s for s in sigs if s['level'] in ['W', 'M'] and s['dir'] == '頂']
     
-    tactics = "🎯 【今晚戰術】：NQ/QQQ/SMH 出現 4H 頂背離！今晚開盤拉高無力可尋找 Put 機會 (嚴禁追 Call)。" if nq_4h_top else \
-              "🎯 【今晚戰術】：NQ/QQQ/SMH 出現 4H 底背離！今晚開盤急跌砸盤可尋找 Call 機會。" if nq_4h_bot else \
+    tactics = "🎯 【今晚戰術】：NQ/SMH 出現 4H 頂背離！今晚開盤拉高無力可尋找 Put 機會 (嚴禁追 Call)。" if nq_4h_top else \
+              "🎯 【今晚戰術】：NQ/SMH 出現 4H 底背離！今晚開盤急跌砸盤可尋找 Call 機會。" if nq_4h_bot else \
               "🟢 【今晚戰術】：無直接 4H 轉折訊號，結合 1m EMA 帶形態，開盤用 15s/1m/3m 貼身線尋找進場點。"
               
     macro_bg = "🏛️ 【大局背景】：週/月線處於大頂背離中！今晚若做 Put 爆發力極大，勝率與盈虧比偏高。" if big_top else \
@@ -232,23 +347,31 @@ def build_email_body(sigs):
         tactics,
         macro_bg,
         "="*55,
-        f"整體風險評級 : {rating} (分數:{risk_score})",
+        f"整體風險評級 : {rating}",
+        f"📊 風險得分拆解 : {breakdown_str}",
         "",
         levels_str,
         "="*55,
         nq_status,
         "="*55,
-        "📅 今晚 0DTE 催化劑提醒與鐵律：",
-        "   * 💡 數據發佈前 15 分鐘（如 20:15）：建議平掉所有 15s/1m 0DTE 頭寸，防範雙向插針。",
-        "   * 🛡️ 數據發佈後（20:45 後）：待 1m EMA 700-1000 帶重新定型，再用 15s/1m/3m 順勢下注。",
+        calendar_str,
         "="*55,
-        "🔥 【詳細背離警報列表 (DIF / J 值)】"
     ]
-    
-    for s in sigs:
-        emoji = '🚨' if s['ticker'] in ['NQ=F', 'SMH'] else '⚠️'
-        L.append(f"{emoji} {s['ticker']} | {s['level']} {s['dir']}背離 [{s['ind']}] | {s['name']}")
-        
+
+    # 多空背離打架情況單獨提醒
+    if conflict_lines:
+        L.append("🔥 【⚠️ 多空背離打架 (衝突警告)】")
+        for c in conflict_lines:
+            L.append(f"   * {c}")
+        L.append("="*55)
+
+    L.append("🔥 【詳細背離警報列表 (多週期整合版)】")
+    if grouped_sig_lines:
+        for line in grouped_sig_lines:
+            L.append(line)
+    else:
+        L.append("🟢 各大板塊與指數目前暫無顯著背離訊號。")
+
     return "\n".join(L)
 
 def main():
@@ -260,7 +383,7 @@ def main():
         body = build_email_body(sigs)
         
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 09:00] NQ/QQQ 貼身短炒戰術地圖 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 09:00] NQ 期貨與 10 大板塊戰術地圖 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(f"<pre style='font-family:Consolas,monospace;font-size:14px;background:#f8f9fa;padding:15px;'>{body}</pre>", 'html', 'utf-8'))
