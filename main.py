@@ -1,6 +1,8 @@
-# radar_v15.1.py - 加lookback修正，唔用零軸過濾
+# radar_v15.2.py - 最終版：包最後K線 + 4H用60
 import yfinance as yf
 import os, csv, smtplib, traceback
+import pandas as pd
+import numpy as np
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -46,7 +48,6 @@ FUTURES = {
 }
 ALL = {**INDICES, **SECTORS, **FUTURES}
 
-# 改1：用5,26,9同你睇盤一致
 def get_dif(df):
     ema5 = df['Close'].ewm(span=5,adjust=False).mean()
     ema26 = df['Close'].ewm(span=26,adjust=False).mean()
@@ -57,30 +58,35 @@ def get_j(df):
     rsv=(df['Close']-low9)/(high9-low9)*100; k=rsv.ewm(com=2,adjust=False).mean(); d=k.ewm(com=2,adjust=False).mean()
     return 3*k-2*d
 
-# 改2：加lookback，唔加零軸過濾
+# 關鍵：包埋最後一根K線
 def find_div(p,i,lookback=60):
-    p=p.dropna().iloc[-lookback:] # 只睇最近N根K線
-    i=i.dropna().iloc[-lookback:]
+    p=p.dropna().iloc[-lookback:].copy()
+    i=i.dropna().iloc[-lookback:].copy()
     idx=p.index.intersection(i.index); p,i=p.loc[idx],i.loc[idx]
     if len(p)<10: return None
-    highs=p[(p.shift(1)<p)&(p.shift(-1)<p)]
+
+    p_high = pd.concat([p, pd.Series([-np.inf])])
+    p_low = pd.concat([p, pd.Series([np.inf])])
+    highs=p[(p.shift(1)<p)&(p_high.shift(-1)<p)]
+    lows=p[(p.shift(1)>p)&(p_low.shift(-1)>p)]
+
     if len(highs)>=2:
         h1,h2=highs.index[-2],highs.index[-1]
-        if p[h2]>p[h1] and i[h2]<i[h1]: return '頂' # 唔判斷DIF>0
-    lows=p[(p.shift(1)>p)&(p.shift(-1)>p)]
+        if p[h2]>p[h1] and i[h2]<i[h1]: return '頂'
     if len(lows)>=2:
         l1,l2=lows.index[-2],lows.index[-1]
-        if p[l2]<p[l1] and i[l2]>i[l1]: return '底' # 唔判斷DIF<0
+        if p[l2]<p[l1] and i[l2]>i[l1]: return '底'
     return None
 
+# 最終lookback：M60, W100, D30, 4H60
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
-    for lv,(itv,per) in [('M',('1mo','5y')),('W',('1wk','2y')),('D',('1d','1y')),('4H',('1h','3mo'))]:
+    for lv,(itv,per,lb) in [('M',('1mo','5y',60)),('W',('1wk','3y',100)),('D',('1d','6mo',30)),('4H',('1h','1mo',60))]:
         try:
             df=yf.Ticker(etf).history(period=per,interval=itv)
             if len(df)<50: continue
             for n,f in [('DIF',get_dif),('J',get_j)]:
-                d=find_div(df['Close'],f(df))
+                d=find_div(df['Close'],f(df),lookback=lb)
                 if d: sigs.append({**info,'ticker':t,'level':lv,'dir':d,'ind':n})
         except: pass
     return sigs
@@ -134,7 +140,7 @@ def analyze(sigs):
 
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L=[f"Radar V15.1 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    L=[f"Radar V15.2 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
     for o in op: L.append(f"- {o}")
     L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
     if cf: L.append(""); L.append("長短週期打架"); L+=cf
@@ -171,8 +177,8 @@ def main():
         mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
         body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv=save_csv(mg,ns)
-        send_email(f"[Radar V15.1] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ V15.1已發送，lookback修正，MACD 5,26,9")
+        send_email(f"[Radar V15.2] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
+        print("✅ V15.2已發送，4H=60，最新K線已修正")
     except Exception as e:
         print(f"❌ 錯誤: {e}"); traceback.print_exc()
         try: send_email("[Radar] 執行失敗",str(e),__file__,[])
