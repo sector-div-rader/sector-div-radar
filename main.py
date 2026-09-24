@@ -1,4 +1,4 @@
-# radar_v15.20.py - Pivot高低點版，參數4H=10, D=8, W=4, M=2
+# radar_v15.20.py - Pivot高低點版，參數4H=10, D=6, W=5, M=2
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
