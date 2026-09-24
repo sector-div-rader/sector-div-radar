@@ -1,4 +1,4 @@
-# main.py - V14.6 (保留V14.5邏輯，只換send_email+main)
+# radar_v14.6.py - V14.5邏輯保留，只改：刪PNG + HTML大表 + 錯誤通知
 import yfinance as yf
 import os, csv, smtplib, traceback
 from datetime import datetime, timezone, timedelta
@@ -6,33 +6,66 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 
-# === EMAIL 設定 ===
 EMAIL_CONFIG = {
-    'smtp_server': 'smtp.gmail.com', 'smtp_port': 587,
+    'smtp_server': 'smtp.gmail.com',
+    'smtp_port': 587,
     'sender_email': os.environ.get('EMAIL_USER'),
     'sender_password': os.environ.get('EMAIL_PASS'),
     'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
 }
 
-# === 資產清單 (V14.5原裝) ===
-INDICES = {'ES=F':{'name':'標普500期貨','weight':5,'index':'SPX','etf':'SPY'},'NQ=F':{'name':'納指100期貨','weight':5,'index':'NDX','etf':'QQQ'},'YM=F':{'name':'道指期貨','weight':3,'index':'DJI','etf':'DIA'}}
-SECTORS = {'XLE':{'name':'美股石油天然氣','weight':2,'index':'SPX'},'KBE':{'name':'美股銀行','weight':2,'index':'SPX'},'SMH':{'name':'美股半導體','weight':3,'index':'NDX'},'IGV':{'name':'美股軟件服務','weight':3,'index':'NDX'},'IBB':{'name':'美股生物技術','weight':1,'index':'SPX'},'ITA':{'name':'美股航太國防','weight':1,'index':'SPX'},'XLP':{'name':'美股必需消費','weight':1,'index':'SPX'},'CARZ':{'name':'美股汽車','weight':2,'index':'SPX'},'XLB':{'name':'美股原材料','weight':2,'index':'SPX'},'XLU':{'name':'美股公用事業','weight':1,'index':'SPX'},'XLRE':{'name':'美股地產','weight':2,'index':'SPX'},'XLC':{'name':'美股通訊服務','weight':2,'index':'NDX'},'BOTZ':{'name':'美股AI人工智能','weight':3,'index':'NDX'},'WCLD':{'name':'美股雲計算','weight':3,'index':'NDX'},'HACK':{'name':'美股網絡安全','weight':2,'index':'NDX'}}
-FUTURES = {'GC=F':{'name':'黃金期貨','index':'GOLD'},'SI=F':{'name':'白銀期貨','index':'SILVER'},'CL=F':{'name':'原油期貨','index':'OIL'},'DX-Y.NYB':{'name':'美元指數','index':'DXY'},'ZN=F':{'name':'十年國債','index':'BOND'},'^VIX':{'name':'恐慌指數','index':'VIX'}}
+INDICES = {
+    'ES=F': {'name':'標普500期貨','sticker':'📈','weight':5,'index':'SPX','etf':'SPY'},
+    'NQ=F': {'name':'納指100期貨','sticker':'📱','weight':5,'index':'NDX','etf':'QQQ'},
+    'YM=F': {'name':'道指期貨','sticker':'🏛️','weight':3,'index':'DJI','etf':'DIA'},
+}
+SECTORS = {
+    'XLE':{'name':'美股石油天然氣','sticker':'🛢️','weight':2,'index':'SPX'},
+    'KBE':{'name':'美股銀行','sticker':'🏦','weight':2,'index':'SPX'},
+    'SMH':{'name':'美股半導體','sticker':'💾','weight':3,'index':'NDX'},
+    'IGV':{'name':'美股軟件服務','sticker':'💿','weight':3,'index':'NDX'},
+    'IBB':{'name':'美股生物技術','sticker':'🧬','weight':1,'index':'SPX'},
+    'ITA':{'name':'美股航太國防','sticker':'✈️','weight':1,'index':'SPX'},
+    'XLP':{'name':'美股必需消費','sticker':'🛒','weight':1,'index':'SPX'},
+    'CARZ':{'name':'美股汽車','sticker':'🚗','weight':2,'index':'SPX'},
+    'XLB':{'name':'美股原材料','sticker':'🧪','weight':2,'index':'SPX'},
+    'XLU':{'name':'美股公用事業','sticker':'💡','weight':1,'index':'SPX'},
+    'XLRE':{'name':'美股地產','sticker':'🏠','weight':2,'index':'SPX'},
+    'XLC':{'name':'美股通訊服務','sticker':'📡','weight':2,'index':'NDX'},
+    'BOTZ':{'name':'美股AI人工智能','sticker':'🤖','weight':3,'index':'NDX'},
+    'WCLD':{'name':'美股雲計算','sticker':'☁️','weight':3,'index':'NDX'},
+    'HACK':{'name':'美股網絡安全','sticker':'🔒','weight':2,'index':'NDX'},
+}
+FUTURES = {
+    'GC=F':{'name':'黃金期貨','sticker':'🥇','index':'GOLD'},
+    'SI=F':{'name':'白銀期貨','sticker':'🥈','index':'SILVER'},
+    'CL=F':{'name':'原油期貨','sticker':'⛽','index':'OIL'},
+    'DX-Y.NYB':{'name':'美元指數','sticker':'💵','index':'DXY'},
+    'ZN=F':{'name':'十年國債','sticker':'📜','index':'BOND'},
+    '^VIX':{'name':'恐慌指數','sticker':'😱','index':'VIX'},
+}
 ALL = {**INDICES, **SECTORS, **FUTURES}
 
-# === V14.5 原裝 function (保留) ===
+# ===== V14.5 原裝 function，全部保留 =====
 def get_dif(df): return df['Close'].ewm(span=12,adjust=False).mean() - df['Close'].ewm(span=26,adjust=False).mean()
 def get_j(df):
     low9=df['Low'].rolling(9).min(); high9=df['High'].rolling(9).max()
-    rsv=(df['Close']-low9)/(high9-low9)*100; k=rsv.ewm(com=2,adjust=False).mean(); d=k.ewm(com=2,adjust=False).mean(); return 3*k-2*d
+    rsv=(df['Close']-low9)/(high9-low9)*100; k=rsv.ewm(com=2,adjust=False).mean(); d=k.ewm(com=2,adjust=False).mean()
+    return 3*k-2*d
+
 def find_div(p,i):
-    p,i=p.dropna(),i.dropna(); idx=p.index.intersection(i.index); p,i=p.loc[idx],i.loc[idx]
+    p=p.dropna(); i=i.dropna(); idx=p.index.intersection(i.index); p,i=p.loc[idx],i.loc[idx]
     if len(p)<10: return None
     highs=p[(p.shift(1)<p)&(p.shift(-1)<p)]
-    if len(highs)>=2 and highs.index[-1]>highs.index[-2] and p.iloc[-1]>p.iloc[-2] and i.iloc[-1]<i.iloc[-2]: return '頂'
+    if len(highs)>=2:
+        h1,h2=highs.index[-2],highs.index[-1]
+        if p[h2]>p[h1] and i[h2]<i[h1]: return '頂'
     lows=p[(p.shift(1)>p)&(p.shift(-1)>p)]
-    if len(lows)>=2 and lows.index[-1]>lows.index[-2] and p.iloc[-1]<p.iloc[-2] and i.iloc[-1]>i.iloc[-2]: return '底'
+    if len(lows)>=2:
+        l1,l2=lows.index[-2],lows.index[-1]
+        if p[l2]<p[l1] and i[l2]>i[l1]: return '底'
     return None
+
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
     for lv,(itv,per) in [('M',('1mo','5y')),('W',('1wk','2y')),('D',('1d','1y')),('4H',('1h','3mo'))]:
@@ -44,51 +77,90 @@ def scan_asset(t,info):
                 if d: sigs.append({**info,'ticker':t,'level':lv,'dir':d,'ind':n})
         except: pass
     return sigs
+
 def merge_signals(sigs):
-    g={};
+    g={}
     for s in sigs: g.setdefault((s['ticker'],s['dir']),[]).append(s)
     m=[]
     for (t,d),its in g.items():
-        info=its[0]; lv=set([x['level'] for x in its]); ind=set([x['ind'] for x in its])
-        m.append({'ticker':t,'name':info['name'],'levels':'+'.join(sorted(lv,key=lambda x:{'4H':1,'D':2,'W':3,'M':4}[x])),'dir':d,'inds':'+'.join(sorted(ind)),'weight':info.get('weight',1),'category':'科技' if info['index']=='NDX' else '週期' if info['index']=='SPX' else '商品'})
+        info=its[0]; lv={}
+        for it in its: lv.setdefault(it['ind'],[]).append(it['level'])
+        for k in lv: lv[k]='+'.join(sorted(lv[k],key=lambda x:{'4H':1,'D':2,'W':3,'M':4}[x]))
+        all_lv=sorted(set(sum([v.split('+') for v in lv.values()],[])),key=lambda x:{'4H':1,'D':2,'W':3,'M':4}[x])
+        lv_str='+'.join(all_lv); ind='+'.join(sorted(lv.keys()))
+        emoji='🗓️' if 'M' in lv_str else '📅' if 'W' in lv_str else '⚠️' if 'D' in lv_str else '💾'
+        cat='科技' if info['index']=='NDX' else '週期' if info['index']=='SPX' else '指數'
+        m.append({'ticker':t,'name':info['name'],'levels':lv_str,'dir':d,'inds':ind,'weight':info.get('weight',1),'category':cat,'display':f"{emoji} {t} | {lv_str} {d}背離 [{ind}] | {info['name']}"})
     return m
-def detect_conflicts(sigs): return [] # V14.5 原裝簡化
+
+def detect_conflicts(sigs):
+    b={}
+    for s in sigs: b.setdefault(s['ticker'],[]).append(s)
+    c=[]
+    for t,its in b.items():
+        lt=[i for i in its if i['level'] in ('M','W','D') and i['dir']=='頂']; lb=[i for i in its if i['level'] in ('M','W','D') and i['dir']=='底']
+        ht=[i for i in its if i['level']=='4H' and i['dir']=='頂']; hb=[i for i in its if i['level']=='4H' and i['dir']=='底']
+        if lt and hb: lv='+'.join(sorted(set([i['level'] for i in lt]),key=lambda x:{'M':1,'W':2,'D':3}[x])); c.append(f"⚠️ {t} | {lv}頂背離 但 4H底背離 | {ALL[t]['name']} – 長空短多")
+        if lb and ht: lv='+'.join(sorted(set([i['level'] for i in lb]),key=lambda x:{'M':1,'W':2,'D':3}[x])); c.append(f"⚠️ {t} | {lv}底背離 但 4H頂背離 | {ALL[t]['name']} – 長多短空")
+    return c
+
 def analyze(sigs):
-    mg=merge_signals(sigs); r=len(mg); te=len([x for x in mg if x['category']=='科技']); cy=len([x for x in mg if x['category']=='週期']); ix=len([x for x in mg if '期貨' in x['name']]); ra='偏多' if sum(1 for x in mg if x['dir']=='底')>sum(1 for x in mg if x['dir']=='頂') else '偏空'; return r,te,cy,ix,ra,'-','-'
+    tech=cycle=index=0
+    for s in sigs:
+        w={'M':s.get('weight',1),'W':2,'D':1,'4H':0.5}[s['level']]
+        if s['index']=='NDX': tech+=w
+        elif s['index']=='SPX': cycle+=w
+        if s['index'] in ['SPX','NDX','DJI']: index+=w
+    risk=int(tech+cycle+index)
+    if risk>=13: rating='末日級別'; ops=['清倉','做空 ES/NQ','買入國債、黃金']
+    elif risk>=8: rating='系統風險'; ops=['科技股減倉','SMH止損']
+    elif risk>=5: rating='高風險'; ops=['控制倉位']
+    else: rating='震盪市'; ops=['維持現有倉位']
+    trig=[ALL[t]['name'] for t in list({s['ticker'] for s in sigs if s['index'] in ['SPX','NDX','DJI']})[:9]]
+    return risk,int(tech),int(cycle),int(index),rating,ops,trig
+
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    lines=[f"Radar V14.6 | {now} HKT",f"風險總分: {r} | 科技:{te} 週期:{cy} 指數:{ix} | 方向:{ra}",""]
-    for m in sorted(mg,key=lambda x:x['weight'],reverse=True): lines.append(f"{m['ticker']} | {m['levels']} {m['dir']}背離 [{m['inds']}] | {m['name']}")
-    return "\n".join(lines)
+    L=[f"Radar V14.6 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    for o in op: L.append(f"- {o}")
+    L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
+    if cf: L.append(""); L.append("長短週期打架"); L+=cf
+    L.append("="*50)
+    mw=[m for m in mg if 'M' in m['levels'] or 'W' in m['levels']]; d=[m for m in mg if 'D' in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]; h=[m for m in mg if '4H' in m['levels'] and 'D' not in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]
+    for m in sorted(mw,key=lambda x:x['weight'],reverse=True): L.append(m['display'])
+    if d: L+=["","-"*50,""]+[m['display'] for m in sorted(d,key=lambda x:x['weight'],reverse=True)]
+    if h: L+=["","-"*50,""]+[m['display'] for m in sorted(h,key=lambda x:x['weight'],reverse=True)]
+    L.append(""); L.append("="*50)
+    return "\n".join(L)
+
 def save_csv(mg,ns):
     p=f"/tmp/radar_{ns}.csv"
     with open(p,'w',newline='',encoding='utf-8-sig') as f:
-        w=csv.writer(f); w.writerow(['Ticker','名稱','時段','方向','指標','類別'])
-        for m in mg: w.writerow([m['ticker'],m['name'],m['levels'],m['dir'],m['inds'],m['category']])
+        w=csv.writer(f); w.writerow(['Ticker','名稱','時段','方向','指標','權重','類別'])
+        for m in mg: w.writerow([m['ticker'],m['name'],m['levels'],m['dir']+'背離',m['inds'],m['weight'],m['category']])
     return p
 
-# === 新 send_email (置中+HTML表) ===
-def send_email(sub, body, csv, merged):
+# ===== 改1：刪走 save_image =====
+# ===== 改2：send_email 用HTML大表，不再插圖 =====
+def send_email(sub,body,csv,merged):
     text_html = f'<div style="text-align:center;font-family:Consolas,monospace;white-space:pre-wrap;line-height:1.6;">{body}</div>'
     rows = ''.join([f"<tr><td>{m['ticker']}</td><td>{m['name']}</td><td>{m['levels']}</td><td>{m['dir']}</td><td>{m['inds']}</td><td>{m['category']}</td></tr>" for m in merged])
     table_html = f"""<div style="text-align:center;margin-top:30px;"><table style="margin:auto;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;"><tr style="background:#2c3e50;color:white;"><th>Ticker</th><th>名稱</th><th>時段</th><th>方向</th><th>指標</th><th>類別</th></tr>{rows}</table></div>"""
-    msg = MIMEMultipart('mixed'); msg['Subject']=sub; msg['From']=EMAIL_CONFIG['sender_email']; msg['To']=EMAIL_CONFIG['receiver_email']
+    msg=MIMEMultipart('mixed'); msg['Subject']=sub; msg['From']=EMAIL_CONFIG['sender_email']; msg['To']=EMAIL_CONFIG['receiver_email']
     msg.attach(MIMEText(text_html+table_html,'html','utf-8'))
     with open(csv,'rb') as f: att=MIMEApplication(f.read(),_subtype='csv'); att.add_header('Content-Disposition','attachment',filename=os.path.basename(csv)); msg.attach(att)
     s=smtplib.SMTP(EMAIL_CONFIG['smtp_server'],EMAIL_CONFIG['smtp_port']); s.starttls(); s.login(EMAIL_CONFIG['sender_email'],EMAIL_CONFIG['sender_password']); s.send_message(msg); s.quit()
 
-# === 新 main (有錯誤捕捉) ===
+# ===== 改3：main 加錯誤捕捉，刪走 png =====
 def main():
     try:
         sigs=[];
         for t,i in ALL.items(): sigs+=scan_asset(t,i)
-        mg=merge_signals(sigs); cf=detect_conflicts(sigs)
-        r,te,cy,ix,ra,op,tr=analyze(sigs)
-        body=build_text(r,te,cy,ix,ra,op,tr,mg,cf)
-        ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
+        mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
+        body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv=save_csv(mg,ns)
         send_email(f"[Radar V14.6] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ Email已發送")
+        print("✅ 已發送，內文置中+HTML大表")
     except Exception as e:
         print(f"❌ 錯誤: {e}"); traceback.print_exc()
         try: send_email("[Radar] 執行失敗",str(e),__file__,[])
