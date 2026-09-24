@@ -1,4 +1,4 @@
-# radar_v15.25_custom.py - NQ 0DTE 終極全功能晨報腳本
+# main.py - NQ 0DTE 終極全功能晨報腳本 (修復 SyntaxError 語法問題)
 import yfinance as yf
 import os, smtplib, traceback
 import pandas as pd
@@ -184,11 +184,17 @@ def get_nq_custom_chart_status():
             lines.append(f"   * 📍 1m EMA 700-1000 帶範圍 : {band_bot:.1f} - {band_top:.1f}")
             lines.append(f"     └─ 形態: {inner_status}")
             
+            # 修復語法：改用標準 if-elif-else 結構
             if not np.isnan(ema3500):
                 lines.append(f"   * 🏛️ 1m EMA 3500 鐵板位 : {ema3500:.1f}")
-                cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (1m 級別長線壓制)" if ema3500 > band_top else \
-                               "🟢 【EMA 3500 在 700-1000 帶下方】 (1m 級別標準多頭)" else \
-                               "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (1m 長短線籌碼交織，極易劇烈洗盤！)"
+                
+                if ema3500 > band_top:
+                    cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (1m 級別長線壓制)"
+                elif ema3500 < band_bot:
+                    cross_status = "🟢 【EMA 3500 在 700-1000 帶下方】 (1m 級別標準多頭)"
+                else:
+                    cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (1m 長短線籌碼交織，極易劇烈洗盤！)"
+                    
                 lines.append(f"     └─ 穿越狀態: {cross_status}")
             
             lines.extend(["   --------------------------------------------------", f"   🎯 實戰戰術指引：{inner_hint}"])
