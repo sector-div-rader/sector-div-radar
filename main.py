@@ -1,4 +1,4 @@
-# radar_v11_index.py - 大勢版：標註 DIF/J 背離 + 中文板塊名
+# radar_v12.2_index.py - 超長虛線分隔日線
 import yfinance as yf
 import os
 import pandas as pd
@@ -8,27 +8,27 @@ from supabase import create_client
 
 # ========== 指數權重最高，5分 ==========
 INDICES = {
-    'SPY': {'name':'標普500', 'sticker':'📈', 'weight':5, 'index':'SPX'},
-    'QQQ': {'name':'納指100', 'sticker':'📱', 'weight':5, 'index':'NDX'},
-    'DIA': {'name':'道指', 'sticker':'🏛️', 'weight':3, 'index':'DJI'},
+    'SPY': {'name':'美股標普500', 'sticker':'📈', 'weight':5, 'index':'SPX'},
+    'QQQ': {'name':'美股納指100', 'sticker':'📱', 'weight':5, 'index':'NDX'},
+    'DIA': {'name':'美股道指', 'sticker':'🏛️', 'weight':3, 'index':'DJI'},
 }
 
 SECTORS = {
-    'XLE': {'name':'石油天然氣', 'sticker':'🛢️', 'weight':2, 'index':'SPX'},
-    'KBE': {'name':'銀行', 'sticker':'🏦', 'weight':2, 'index':'SPX'},
-    'SMH': {'name':'半導體', 'sticker':'💾', 'weight':3, 'index':'NDX'},
-    'IGV': {'name':'軟件服務', 'sticker':'💿', 'weight':3, 'index':'NDX'},
-    'IBB': {'name':'生物技術', 'sticker':'🧬', 'weight':1, 'index':'SPX'},
-    'ITA': {'name':'航太國防', 'sticker':'✈️', 'weight':1, 'index':'SPX'},
-    'XLP': {'name':'必需消費', 'sticker':'🛒', 'weight':1, 'index':'SPX'},
-    'CARZ': {'name':'汽車', 'sticker':'🚗', 'weight':2, 'index':'SPX'},
-    'XLB': {'name':'原材料', 'sticker':'🧪', 'weight':2, 'index':'SPX'},
-    'XLU': {'name':'公用事業', 'sticker':'💡', 'weight':1, 'index':'SPX'},
-    'XLRE': {'name':'地產', 'sticker':'🏠', 'weight':2, 'index':'SPX'},
-    'XLC': {'name':'通訊服務', 'sticker':'📡', 'weight':2, 'index':'NDX'},
-    'BOTZ': {'name':'AI人工智能', 'sticker':'🤖', 'weight':3, 'index':'NDX'},
-    'WCLD': {'name':'雲計算', 'sticker':'☁️', 'weight':3, 'index':'NDX'},
-    'HACK': {'name':'網絡安全', 'sticker':'🔒', 'weight':2, 'index':'NDX'},
+    'XLE': {'name':'美股石油天然氣', 'sticker':'🛢️', 'weight':2, 'index':'SPX'},
+    'KBE': {'name':'美股銀行', 'sticker':'🏦', 'weight':2, 'index':'SPX'},
+    'SMH': {'name':'美股半導體', 'sticker':'💾', 'weight':3, 'index':'NDX'},
+    'IGV': {'name':'美股軟件服務', 'sticker':'💿', 'weight':3, 'index':'NDX'},
+    'IBB': {'name':'美股生物技術', 'sticker':'🧬', 'weight':1, 'index':'SPX'},
+    'ITA': {'name':'美股航太國防', 'sticker':'✈️', 'weight':1, 'index':'SPX'},
+    'XLP': {'name':'美股必需消費', 'sticker':'🛒', 'weight':1, 'index':'SPX'},
+    'CARZ': {'name':'美股汽車', 'sticker':'🚗', 'weight':2, 'index':'SPX'},
+    'XLB': {'name':'美股原材料', 'sticker':'🧪', 'weight':2, 'index':'SPX'},
+    'XLU': {'name':'美股公用事業', 'sticker':'💡', 'weight':1, 'index':'SPX'},
+    'XLRE': {'name':'美股地產', 'sticker':'🏠', 'weight':2, 'index':'SPX'},
+    'XLC': {'name':'美股通訊服務', 'sticker':'📡', 'weight':2, 'index':'NDX'},
+    'BOTZ': {'name':'美股AI人工智能', 'sticker':'🤖', 'weight':3, 'index':'NDX'},
+    'WCLD': {'name':'美股雲計算', 'sticker':'☁️', 'weight':3, 'index':'NDX'},
+    'HACK': {'name':'美股網絡安全', 'sticker':'🔒', 'weight':2, 'index':'NDX'},
 }
 
 FUTURES = {
@@ -88,6 +88,7 @@ def get_div_days(sb, ticker, level, div_type):
 def scan_asset(code, info, sb):
     raw_signals = []
     try:
+        df_d = get_hist(code, "2y", "1d")
         df_w = get_hist(code, "3y", "1wk")
         df_m = get_hist(code, "10y", "1mo")
         df_60m = get_hist(code, "3mo", "60m")
@@ -104,14 +105,22 @@ def scan_asset(code, info, sb):
                     days = get_div_days(sb, code, 'M', div)
                     raw_signals.append({'ticker':code, 'level':'M', 'type':div, 'dir':'頂' if '頂' in div else '底',
                                        'weight':info.get('weight',1), 'sticker':info['sticker'], 'name':info['name'],
-                                       'index':info['index'], 'days':days, 'indicator':'J'}) # 標註 J
+                                       'index':info['index'], 'days':days, 'indicator':'J'})
 
         # 週線 - 用 DIF
         div = find_div(df_w['Close'], get_dif(df_w['Close']))
         if div:
             days = get_div_days(sb, code, 'W', div)
             raw_signals.append({'ticker':code, 'level':'W', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                               'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'}) # 標註 DIF
+                               'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'})
+
+        # 日線 - 用 DIF
+        if len(df_d)>=60:
+            div = find_div(df_d['Close'], get_dif(df_d['Close']))
+            if div:
+                days = get_div_days(sb, code, 'D', div)
+                raw_signals.append({'ticker':code, 'level':'D', 'type':div, 'dir':'頂' if '頂' in div else '底',
+                                   'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'})
 
         # 4H - 用 DIF
         if len(df_60m)>=60:
@@ -120,7 +129,7 @@ def scan_asset(code, info, sb):
                 div = find_div(df_4h['Close'], get_dif(df_4h['Close']))
                 if div:
                     raw_signals.append({'ticker':code, 'level':'4H', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                                       'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'indicator':'DIF'}) # 標註 DIF
+                                       'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'indicator':'DIF'})
 
     except Exception as e:
         print(f"skip {code} {e}")
@@ -128,12 +137,25 @@ def scan_asset(code, info, sb):
     return raw_signals
 
 def merge_signals(all_signals):
+    daily_signals = [s for s in all_signals if s['level']=='D']
+    other_signals = [s for s in all_signals if s['level']!='D']
+    
+    final_msgs = []
+    
+    # 1. 日線用超長虛線分隔
+    if daily_signals:
+        for s in daily_signals:
+            icon = '📅'
+            days_str = f" 第{s.get('days',1)}日"
+            final_msgs.append(f"{icon} {s['sticker']} {s['ticker']} D{s['dir']}背離[DIF]{days_str} - {s['name']}")
+        final_msgs.append("――――――――――――――――――――――――――") # 改呢行，拉長虛線
+    
+    # 2. 其他週期合併
     grouped = {}
-    for s in all_signals:
+    for s in other_signals:
         key = (s['ticker'], s['dir'])
         grouped.setdefault(key, []).append(s)
 
-    final_msgs = []
     level_order = {'4H':1, 'W':2, 'M':3}
 
     for (ticker, direction), sigs in grouped.items():
@@ -146,7 +168,6 @@ def merge_signals(all_signals):
         weight = max([s.get('weight',1) for s in sigs if s['level']=='M'], default=0)
         days = max([s.get('days',1) for s in sigs if s['level']=='M'], default=1)
 
-        # 標註指標：月線用J，其他用DIF。如果有M就優先顯示J
         indicators = list(set([s['indicator'] for s in sigs_sorted]))
         indicator_str = '[J]' if 'J' in indicators else '[DIF]'
 
@@ -203,7 +224,7 @@ def main():
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
 
-    print(f"=== Radar V11 Index 開始 {now_str} ===")
+    print(f"=== Radar V12.2 Index 開始 {now_str} ===")
 
     for ticker, info in {**INDICES, **SECTORS}.items():
         all_signals += scan_asset(ticker, info, sb)
@@ -220,7 +241,7 @@ def main():
         except Exception as e: print(f"Supabase error: {e}")
 
     if not all_signals:
-        message = f"Radar V11 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
+        message = f"Radar V12.2 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
         title = "Radar - No Signal"
         pri = "low"
     else:
@@ -242,7 +263,7 @@ def main():
             header.append(f"月線觸發：{', '.join(risk_names)}")
         header += advice
 
-        message = f"Radar V11 {now_str}\n\n" + "\n\n".join(header + [""] + final_msgs)
+        message = f"Radar V12.2 {now_str}\n\n" + "\n\n".join(header + [""] + final_msgs)
         title = f"Risk{risk_score} T{tech_score}C{cycle_score}I{index_score}"
         pri = "high" if risk_score >= 8 else "default"
 
