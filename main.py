@@ -1,21 +1,25 @@
-# radar_v13.2_split_email.py - 末日級別三保險版
+# radar_v13.3_email_html.py
 import yfinance as yf
 import os
 import pandas as pd
 import requests
 import smtplib
 import time
+import base64
+from io import BytesIO
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 
-# ========== Email設定 ==========
 EMAIL_CONFIG = {
-    'smtp_server': 'smtp.gmail.com', 
+    'smtp_server': 'smtp.gmail.com',
     'smtp_port': 587,
     'sender_email': os.environ.get('EMAIL_USER'),
-    'sender_password': os.environ.get('EMAIL_PASS'), # 16位應用程式密碼，唔要空格
+    'sender_password': os.environ.get('EMAIL_PASS'),
     'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
 }
 
@@ -54,192 +58,222 @@ FUTURES = {
 
 ALL_ASSETS = {**INDICES, **SECTORS, **FUTURES}
 
-def get_dif(c):
-    return c.ewm(span=5, adjust=False).mean() - c.ewm(span=26, adjust=False).mean()
+def get_dif(data):
+    if len(data) < 35: return pd.Series()
+    ema12 = data['Close'].ewm(span=12).mean()
+    ema26 = data['Close'].ewm(span=26).mean()
+    return ema12 - ema26
 
-def get_kdj(df):
-    low=df['Low'].rolling(9).min()
-    high=df['High'].rolling(9).max()
-    rsv=(df['Close']-low)/(high-low)*100
-    k=rsv.ewm(com=2, adjust=False).mean()
-    d=k.ewm(com=2, adjust=False).mean()
-    return 3*k-2*d
+def get_kdj(data):
+    if len(data) < 34: return pd.Series()
+    low_min = data['Low'].rolling(9).min()
+    high_max = data['High'].rolling(9).max()
+    rsv = (data['Close'] - low_min) / (high_max - low_min) * 100
+    k = rsv.ewm(com=2).mean()
+    d = k.ewm(com=2).mean()
+    return 3 * k - 2 * d
 
-def find_div(p,i):
-    if len(p)<30: return None
-    p=p.iloc[-60:]
-    i=i.iloc[-60:]
-    s=p.iloc[:-5].iloc[-20:]
-    if len(s)<5: return None
-    curr_p=float(p.iloc[-1])
-    curr_i=float(i.iloc[-1])
-    peak_p=float(p.loc[s.idxmax()])
-    trough_p=float(p.loc[s.idxmin()])
-    peak_i=float(i.loc[s.idxmax()])
-    trough_i=float(i.loc[s.idxmin()])
-    if curr_p>=peak_p*0.95 and curr_i<peak_i*0.97: return "頂背離"
-    if curr_p<=trough_p*1.05 and curr_i>trough_i*1.03: return "底背離"
+def find_div(price, indicator, lookback=60):
+    price = price.dropna().tail(lookback)
+    indicator = indicator.dropna().tail(lookback)
+    if len(price) < 20 or len(indicator) < 20: return None
+    p1, p2 = price.iloc[-20:-10].idxmax(), price.iloc[-10:].idxmax()
+    if pd.isna(p1) or pd.isna(p2) or p1 >= p2: return None
+    i1, i2 = indicator.loc[p1], indicator.loc[p2]
+    if price.loc[p2] > price.loc[p1] and i2 < i1: return '頂'
     return None
 
-def get_hist(ticker, period, interval):
+def get_hist(ticker, interval, period):
+    return yf.Ticker(ticker).history(period=period, interval=interval)
+
+def get_div_days(ticker, interval, period, indicator):
+    df = get_hist(ticker, interval, period)
+    if df.empty: return 0, None
+    ind = get_dif(df) if indicator == 'DIF' else get_kdj(df)
+    days = 0
+    if not ind.empty:
+        for i in range(len(df)-1, 0, -1):
+            if find_div(df['Close'].iloc[:i+1], ind.iloc[:i+1]) == '頂':
+                days += 1
+            else: break
+    return days, df
+
+def scan_asset(ticker, info, sb_client=None):
+    sigs = []
+    etf_ticker = info.get('etf', ticker)
     try:
-        df = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=True)
-        return df
-    except: return pd.DataFrame()
+        m_df = get_hist(etf_ticker, "1mo", "2y")
+        if not m_df.empty:
+            m_ind = get_dif(m_df)
+            m_div = find_div(m_df['Close'], m_ind)
+            if m_div:
+                days, _ = get_div_days(etf_ticker, "1mo", "2y", "DIF")
+                sigs.append({**info, 'ticker':ticker, 'level':'M', 'type':f"M{m_div}背離[DIF]", 'dir':m_div, 'indicator':'DIF', 'days':max(1,days), 'weight':info.get('weight',1)})
+            m_kdj = get_kdj(m_df)
+            m_div_k = find_div(m_df['Close'], m_kdj)
+            if m_div_k:
+                days, _ = get_div_days(etf_ticker, "1mo", "2y", "J")
+                sigs.append({**info, 'ticker':ticker, 'level':'M', 'type':f"M{m_div_k}背離[J]", 'dir':m_div_k, 'indicator':'J', 'days':max(1,days), 'weight':info.get('weight',1)})
 
-def get_div_days(sb, ticker, level, div_type):
-    try:
-        res = sb.table("signals").select("created_at").eq("ticker",ticker).eq("level",level).eq("signal",div_type).order("created_at").limit(1).execute()
-        if res.data:
-            first_day = datetime.fromisoformat(res.data[0]['created_at'].replace('Z','+00:00'))
-            days = (datetime.now(timezone.utc) - first_day).days + 1
-            return days
-        return 1
-    except: return 1
-
-def scan_asset(code, info, sb):
-    raw_signals = []
-    try:
-        df_d = get_hist(code, "2y", "1d")
-        df_w = get_hist(code, "3y", "1wk")
-        df_m = get_hist(code, "10y", "1mo")
-        df_60m = get_hist(code, "3mo", "60m")
-
-        if len(df_w)<60: return []
-        print(f"掃描 {code} {info['name']}")
-
-        if len(df_m)>=30:
-            j=get_kdj(df_m).dropna()
-            if len(j)>=5:
-                div = find_div(df_m['Close'].loc[j.index], j)
-                if div and ((div=="頂背離" and j.iloc[-1]<j.iloc[-2]) or (div=="底背離" and j.iloc[-1]>j.iloc[-2])):
-                    days = get_div_days(sb, code, 'M', div)
-                    raw_signals.append({'ticker':code, 'level':'M', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                                       'weight':info.get('weight',1), 'sticker':info['sticker'], 'name':info['name'],
-                                       'index':info['index'], 'days':days, 'indicator':'J'})
-
-        div = find_div(df_w['Close'], get_dif(df_w['Close']))
-        if div:
-            days = get_div_days(sb, code, 'W', div)
-            raw_signals.append({'ticker':code, 'level':'W', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                               'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'})
-
-        if len(df_d)>=60:
-            div = find_div(df_d['Close'], get_dif(df_d['Close']))
-            if div:
-                days = get_div_days(sb, code, 'D', div)
-                raw_signals.append({'ticker':code, 'level':'D', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                                   'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'})
-
-        if len(df_60m)>=60:
-            df_4h=df_60m.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last'}).dropna()
-            if len(df_4h)>=60:
-                div = find_div(df_4h['Close'], get_dif(df_4h['Close']))
-                if div:
-                    raw_signals.append({'ticker':code, 'level':'4H', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                                       'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'indicator':'DIF'})
-
+        for lv, (intv, per) in [('W',("1wk","1y")), ('D',("1d","6mo")), ('4H',("1h","3mo"))]:
+            df = get_hist(etf_ticker, intv, per)
+            if df.empty: continue
+            ind = get_dif(df)
+            div = find_div(df['Close'], ind)
+            if div: sigs.append({**info, 'ticker':ticker, 'level':lv, 'type':f"{lv}{div}背離[DIF]", 'dir':div, 'indicator':'DIF'})
     except Exception as e:
-        print(f"skip {code} {e}")
+        print(f"掃描 {ticker} 失敗: {e}")
+    return sigs
 
-    return raw_signals
-
-def merge_signals(all_signals):
-    daily_signals = [s for s in all_signals if s['level']=='D']
-    other_signals = [s for s in all_signals if s['level']!='D']
-    
-    final_msgs = []
-    
-    if daily_signals:
-        for s in daily_signals:
-            icon = '📅'
-            days_str = f" 第{s.get('days',1)}日"
-            final_msgs.append(f"{icon} {s['sticker']} {s['ticker']} D{s['dir']}背離[DIF]{days_str} - {s['name']}")
-        final_msgs.append("――――――――――――――――――――――――――")
-    
+def merge_signals(sigs):
+    out = []
     grouped = {}
-    for s in other_signals:
-        key = (s['ticker'], s['dir'])
-        grouped.setdefault(key, []).append(s)
+    for s in sigs:
+        key = (s['ticker'], s['dir'], s['indicator'])
+        if key not in grouped: grouped[key] = []
+        grouped[key].append(s)
 
-    level_order = {'4H':1, 'W':2, 'M':3}
+    for (ticker, dir_type, ind), items in grouped.items():
+        items.sort(key=lambda x: {'M':4,'W':3,'D':2,'4H':1}[x['level']])
+        base = items[0]
+        emoji = {'M':'🗓️','W':'📅','D':'⚠️','4H':'💾'}[base['level']]
+        weight_str = f" [{base.get('weight',1)}分]" if base['level']=='M' else ""
+        days_str = f" 第{base.get('days',1)}日" if base['level']=='M' else ""
+        extra = [f"{i['level']}{i['dir']}背離[{i['indicator']}]" for i in items[1:]]
+        extra_str = f" ({', '.join(extra)})" if extra else ""
+        out.append(f"{emoji} {base['sticker']} {ticker} {base['level']}{dir_type}背離[{ind}]{weight_str}{days_str}{extra_str} - {base['name']}")
+    return out
 
-    for (ticker, direction), sigs in grouped.items():
-        sigs_sorted = sorted(sigs, key=lambda x: level_order[x['level']])
-        levels = [s['level'] for s in sigs_sorted]
-        if not levels: continue
+def analyze_risk(sigs):
+    tech, cycle, index = 0, 0, 0
+    tech_tickers, cycle_tickers, index_tickers = set(), set(), set()
+    for s in sigs:
+        if s['level']!= 'M': continue
+        w = s.get('weight', 1)
+        idx = s['index']
+        if idx == 'NDX': tech += w; tech_tickers.add(s['ticker'])
+        elif idx == 'SPX': cycle += w; cycle_tickers.add(s['ticker'])
+        elif idx in ['SPX','NDX','DJI']: index += w; index_tickers.add(s['ticker'])
 
-        sticker = sigs[0]['sticker']
-        name = sigs[0]['name']
-        weight = max([s.get('weight',1) for s in sigs if s['level']=='M'], default=0)
-        days = max([s.get('days',1) for s in sigs if s['level']=='M'], default=1)
-
-        indicators = list(set([s['indicator'] for s in sigs_sorted]))
-        indicator_str = '[J]' if 'J' in indicators else '[DIF]'
-
-        level_str = '+'.join(levels)
-        icon = '🗓️' if 'M' in levels else '⚠️'
-        weight_str = f" [{weight}分]" if 'M' in levels and weight>0 else ""
-        days_str = f" 第{days}日" if 'M' in levels else ""
-        name_str = f" - {name}"
-
-        final_msgs.append(f"{icon} {sticker} {ticker} {level_str}{direction}背離{indicator_str}{weight_str}{days_str}{name_str}")
-
-    return final_msgs
-
-def analyze_risk(all_signals):
-    month_tops = [s for s in all_signals if s['level']=='M' and s['type']=='頂背離']
-    month_bots = [s for s in all_signals if s['level']=='M' and s['type']=='底背離']
-    index_tops = [s for s in month_tops if s['ticker'] in INDICES]
-
-    total_score = sum(s.get('weight',1) for s in month_tops)
-    tech_score = sum(s.get('weight',1) for s in month_tops if s['index']=='NDX')
-    cycle_score = sum(s.get('weight',1) for s in month_tops if s['index']=='SPX')
-    index_score = sum(s.get('weight',1) for s in index_tops)
-
+    risk_score = tech + cycle + index
     advice = []
-    if total_score >= 13 and index_score >= 5:
-        advice.append("大熊市實錘：2000/2007級別，現金為王，ES/NQ做空，6-12個月")
-    elif total_score >= 8 and index_score >= 5:
-        advice.append("系統性風險：指數共振，ES/NQ減倉至30%，買VXX/TLT對沖")
-    elif total_score >= 8 and tech_score >= 6:
-        advice.append("科技泡沫破裂：空NQ/SMH，避開成長股")
-    elif total_score >= 8 and cycle_score >= 6:
-        advice.append("經濟衰退交易：空ES+資源股，買長債TLT避險")
-    elif total_score >= 5:
-        advice.append("高風險區：減倉至50%，等日線共振再操作")
-    elif len(month_bots) >= 2:
-        advice.append("月線底背離>=2：左側佈局，撈底信號出現")
+
+    if index >= 5 and risk_score >= 13:
+        advice = [
+            "🚨 大熊市實錘：2000/2007級別股災，SPX/NDX/DJI全滅",
+            "操作：清倉避險資產、ES/NQ做空、國債/黃金對沖",
+            "時長：6-12個月，月線死叉確認反彈再入場",
+            f"主要影響：美股三大指數期貨 + 週期股",
+            f"觸發：{', '.join([ALL_ASSETS[t]['name'] for t in index_tickers])}"
+        ]
+    elif tech >= 5 and risk_score >= 8:
+        advice = [
+            "⚠️ 科技股災：科網股重災區，QQQ/ARKK重創",
+            "操作：科技股清倉、SMH/SOXL止損、減槓桿",
+            f"觸發：{', '.join([ALL_ASSETS[t]['name'] for t in tech_tickers])}"
+        ]
+    elif cycle >= 5 and risk_score >= 5:
+        advice = [
+            "🔄 經濟衰退：週期股殺跌，SPY/DIA受累",
+            "操作：週期股減倉、XLE/KBE止損、防守股",
+            f"觸發：{', '.join([ALL_ASSETS[t]['name'] for t in cycle_tickers])}"
+        ]
     else:
-        advice.append("震盪市：控倉操作，無大趨勢")
+        advice = ["📊 震盪市：無系統風險，控制倉位即可"]
 
-    impacted = []
-    if index_score > 0: impacted.append("美股三大指數期貨")
-    if cycle_score >= 4: impacted.append("週期股")
-    if tech_score >= 4: impacted.append("科技股")
-    advice.append(f"主要影響：{' + '.join(impacted) if impacted else '暫無'}")
+    return risk_score, tech, cycle, index, list(tech_tickers|cycle_tickers|index_tickers), advice
 
-    return total_score, tech_score, cycle_score, index_score, [s['ticker'] for s in month_tops], advice
-
-def send_email(subject, body):
-    """發Email，失敗唔影響主流程"""
-    if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
-        print("Email未配置，跳過")
-        return False
-    
+def generate_mini_chart(ticker):
     try:
-        msg = MIMEMultipart()
+        df = yf.Ticker(ticker).history(period="1mo", interval="1d")
+        if len(df) < 5: return None
+        fig, ax = plt.subplots(figsize=(3, 1.5), dpi=100)
+        ax.plot(df.index, df['Close'], color='black', linewidth=1.5)
+        ax.fill_between(df.index, df['Close'], df['Close'].min(), alpha=0.1)
+        ax.set_xticks([]); ax.set_yticks([])
+        for spine in ax.spines.values(): spine.set_visible(False)
+        plt.tight_layout(pad=0)
+        buf = BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode('utf-8')
+    except:
+        return None
+
+def build_html_email(risk_score, tech_score, cycle_score, index_score, risk_tickers, advice, final_msgs, all_signals):
+    if risk_score >= 13: risk_color = "#8B0000"; risk_text = "末日級別"
+    elif risk_score >= 8: risk_color = "#FF4500"; risk_text = "系統風險"
+    elif risk_score >= 5: risk_color = "#FFA500"; risk_text = "高風險"
+    else: risk_color = "#32CD32"; risk_text = "震盪市"
+
+    month_sigs = [s for s in all_signals if s['level']=='M']
+    month_html = ""
+    for s in month_sigs:
+        chart_b64 = generate_mini_chart(s['ticker'])
+        chart_img = f'<img src="data:image/png;base64,{chart_b64}" width="150">' if chart_b64 else ""
+        weight_str = f"<b>{s.get('weight',1)}分</b>"
+        days_str = f"第{s.get('days',1)}日"
+        tv_link = f"https://www.tradingview.com/chart/?symbol={s['ticker']}"
+        month_html += f"""
+        <tr style="background:{'#FFE4E1' if s['dir']=='頂' else '#E0FFE0'};">
+            <td>{s['sticker']} <a href="{tv_link}">{s['ticker']}</a></td>
+            <td>{s['name']}</td>
+            <td><b>M{s['dir']}背離[{s['indicator']}]</b></td>
+            <td>{weight_str}</td>
+            <td>{days_str}</td>
+            <td>{chart_img}</td>
+        </tr>
+        """
+
+    html = f"""
+    <html><head><style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        th {{ background-color: #4CAF50; color: white; }}
+      .risk-box {{ padding: 15px; border-radius: 8px; color: white; background: {risk_color}; margin: 20px 0; }}
+      .advice {{ background: #f0f0f0; padding: 15px; border-left: 4px solid {risk_color}; margin: 20px 0; }}
+    </style></head><body>
+        <div class="risk-box">
+            <h2>💀 Radar V13.3 {risk_text}</h2>
+            <h1>總分 {risk_score} | 科技 {tech_score} | 週期 {cycle_score} | 指數 {index_score}</h1>
+        </div>
+        <div class="advice"><h3>操作建議</h3>{"<br>".join([f"• {a}" for a in advice])}</div>
+        <h3>月線級別信號 ({len(month_sigs)}個)</h3>
+        <table><tr><th>Ticker</th><th>名稱</th><th>信號</th><th>權重</th><th>持續</th><th>30日走勢</th></tr>
+        {month_html if month_html else "<tr><td colspan=6>今日無月線信號</td></tr>"}
+        </table>
+        <h3>全部信號明細</h3>
+        <pre style="background:#f5f5f5;padding:15px;border-radius:5px;">{"<br>".join(final_msgs)}</pre>
+        <p style="color:#888;font-size:12px;">Radar V13.3 | {datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M HKT')}</p>
+    </body></html>
+    """
+    return html
+
+def send_email_html(subject, html_body, csv_path=None):
+    if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
+        print("Email未配置，跳過"); return False
+    try:
+        msg = MIMEMultipart('mixed')
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
-        
+        msg_alt = MIMEMultipart('alternative')
+        msg_alt.attach(MIMEText("請用支援HTML的郵件客戶端查看", 'plain', 'utf-8'))
+        msg_alt.attach(MIMEText(html_body, 'html', 'utf-8'))
+        msg.attach(msg_alt)
+        if csv_path and os.path.exists(csv_path):
+            with open(csv_path, 'rb') as f:
+                part = MIMEText(f.read().decode('utf-8'), 'csv', 'utf-8')
+                part.add_header('Content-Disposition', 'attachment', filename='history.csv')
+                msg.attach(part)
         server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
         server.starttls()
         server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
         server.send_message(msg)
         server.quit()
-        print(f"Email已發送到 {EMAIL_CONFIG['receiver_email']}")
+        print(f"HTML Email已發送到 {EMAIL_CONFIG['receiver_email']}")
         return True
     except Exception as e:
         print(f"Email發送失敗: {e}")
@@ -249,12 +283,10 @@ def main():
     all_signals = []
     hk_tz = timezone(timedelta(hours=8))
     now_str = datetime.now(hk_tz).strftime('%m-%d %H:%M')
-
     url = os.environ.get('SUPABASE_URL')
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
-
-    print(f"=== Radar V13.2 Split+Email 開始 {now_str} ===")
+    print(f"=== Radar V13.3 HTML Email 開始 {now_str} ===")
 
     for ticker, info in {**INDICES, **SECTORS}.items():
         all_signals += scan_asset(ticker, info, sb)
@@ -271,77 +303,37 @@ def main():
         except Exception as e: print(f"Supabase error: {e}")
 
     if not all_signals:
-        message = f"Radar V13.2 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
+        message = f"Radar V13.3 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
         title = "Radar - No Signal"
-        pri = "low"
         requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'),
-            headers={"Title": title.encode('utf-8'), "Priority": pri}, timeout=10)
-        send_email(title, message)
+            headers={"Title": title.encode('utf-8'), "Priority": "low"}, timeout=10)
+        send_email_html(title, f"<h2>今日無信號</h2><p>{now_str}</p>")
     else:
-        risk_score, tech_score, cycle_score, index_score, risk_tickers, advice = analyze_risk(all_signals)
+        risk_score, tech, cycle, index, risk_tickers, advice = analyze_risk(all_signals)
         final_msgs = merge_signals(all_signals)
-
         header = []
-        if risk_score >= 13:
-            header.append(f"💀 末日級別 總分{risk_score} 科技{tech_score} 週期{cycle_score} 指數{index_score}")
-        elif risk_score >= 8:
-            header.append(f"🚨 系統風險 總分{risk_score} 科技{tech_score} 週期{cycle_score} 指數{index_score}")
-        elif risk_score >= 5:
-            header.append(f"⚠️ 高風險 總分{risk_score} 科技{tech_score} 週期{cycle_score} 指數{index_score}")
-        else:
-            header.append(f"📊 風險分數 總分{risk_score} 科技{tech_score} 週期{cycle_score} 指數{index_score}")
-
+        if risk_score >= 13: header.append(f"💀 末日級別 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
+        elif risk_score >= 8: header.append(f"🚨 系統風險 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
+        elif risk_score >= 5: header.append(f"⚠️ 高風險 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
+        else: header.append(f"📊 風險分數 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
         if risk_tickers:
             risk_names = [f"{t}({ALL_ASSETS[t]['name']})" for t in risk_tickers]
             header.append(f"月線觸發：{', '.join(risk_names)}")
         header += advice
 
-        # ========== 分2條ntfy發送 ==========
-        # 第1條：末日總結，確保手機收到
-        summary_msg = f"Radar V13.2 {now_str}\n\n" + "\n\n".join(header)
-        title = f"Risk{risk_score} T{tech_score}C{cycle_score}I{index_score}"
+        summary_msg = f"Radar V13.3 {now_str}\n\n" + "\n\n".join(header)
+        title = f"Risk{risk_score} T{tech}C{cycle}I{index}"
         pri = "max" if risk_score >= 13 else "high" if risk_score >= 8 else "default"
-        
-        try:
-            requests.post(
-                "https://ntfy.sh/sector-radar-ivan117",
-                data=summary_msg.encode('utf-8'),
-                headers={
-                    "Title": f"💀 {title}".encode('utf-8'),
-                    "Priority": pri,
-                    "Content-Type": "text/plain; charset=utf-8",
-                    "Markdown": "yes",
-                },
-                timeout=10
-            )
-            print("第1條ntfy已發送：末日總結")
-        except Exception as e: 
-            print(f"ntfy1失敗: {e}")
-
-        time.sleep(2) # 等2秒，避免手機通知合併
-
-        # 第2條：詳細信號列表
+        requests.post("https://ntfy.sh/sector-radar-ivan117", data=summary_msg.encode('utf-8'),
+            headers={"Title": f"💀 {title}".encode('utf-8'), "Priority": pri}, timeout=10)
+        time.sleep(2)
         detail_msg = f"信號明細 {now_str}\n\n" + "\n".join(final_msgs)
-        try:
-            requests.post(
-                "https://ntfy.sh/sector-radar-ivan117",
-                data=detail_msg.encode('utf-8'),
-                headers={
-                    "Title": f"📊 信號明細 Risk{risk_score}".encode('utf-8'),
-                    "Priority": "default",
-                    "Content-Type": "text/plain; charset=utf-8",
-                    "Markdown": "yes",
-                },
-                timeout=10
-            )
-            print("第2條ntfy已發送：信號明細")
-        except Exception as e: 
-            print(f"ntfy2失敗: {e}")
+        requests.post("https://ntfy.sh/sector-radar-ivan117", data=detail_msg.encode('utf-8'),
+            headers={"Title": f"📊 信號明細 Risk{risk_score}".encode('utf-8'), "Priority": "default"}, timeout=10)
 
-        # 第3保險：Email發完整版
-        full_message = summary_msg + "\n\n" + "="*30 + "\n\n" + detail_msg
+        html_body = build_html_email(risk_score, tech, cycle, index, risk_tickers, advice, final_msgs, all_signals)
         email_subject = f"💀 {title} - {now_str}"
-        send_email(email_subject, full_message)
+        send_email_html(email_subject, html_body, 'history.csv')
 
     print("\n發送完成\n")
 
