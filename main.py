@@ -1,27 +1,27 @@
-# radar_v11.py - 中板塊 DJUS + AI概念版
+# radar_v11_clean.py - DJUS中板塊純價格背離版
 import yfinance as yf
 import os
 import pandas as pd
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
-# ========== 中板真指數 ==========
+# ========== 中板塊指數，無成交量 ==========
 SECTORS = {
-    'LIST2025':  {'name':'石油天然氣', 'price_ticker':'^DJUSEN', 'vol_etf':'XLE',  'sticker':'🛢️'},
-    'LIST2008':  {'name':'銀行',       'price_ticker':'^DJUSBK', 'vol_etf':'XLF',  'sticker':'🏦'},
-    'LIST2016':  {'name':'半導體',     'price_ticker':'^DJUSSC', 'vol_etf':'SMH',  'sticker':'💾'},
-    'LIST23925': {'name':'存儲/硬件',  'price_ticker':'^DJUSCH', 'vol_etf':'SMH',  'sticker':'💿'},
-    'LIST2110':  {'name':'生物技術',   'price_ticker':'^DJUSBT', 'vol_etf':'IBB',  'sticker':'🧬'},
-    'LIST2089':  {'name':'航太國防',   'price_ticker':'^DJUSAE', 'vol_etf':'ITA',  'sticker':'✈️'},
-    'LIST2145':  {'name':'必需消費',   'price_ticker':'^DJUSNC', 'vol_etf':'XLP',  'sticker':'🛒'},
-    'LIST2080':  {'name':'汽車零件',   'price_ticker':'^DJUSAU', 'vol_etf':'CARZ', 'sticker':'🚗'},
-    'LIST2035':  {'name':'化工',       'price_ticker':'^DJUSCM', 'vol_etf':'XLB',  'sticker':'🧪'},
-    'LIST2260':  {'name':'公用事業',   'price_ticker':'^DJUSUT', 'vol_etf':'XLU',  'sticker':'💡'},
-    'LIST2250':  {'name':'地產信託',   'price_ticker':'^DJUSRI', 'vol_etf':'XLRE', 'sticker':'🏠'},
-    'LIST2065':  {'name':'電信服務',   'price_ticker':'^DJUSTL', 'vol_etf':'XLC',  'sticker':'📡'},
-    'LIST2666':  {'name':'AI人工智能', 'price_ticker':'^KNGAI',  'vol_etf':'BOTZ', 'sticker':'🤖'},
-    'LISTCLOUD': {'name':'雲計算',     'price_ticker':'^CLOUD', 'vol_etf':'WCLD', 'sticker':'☁️'},
-    'LISTHACK':  {'name':'網絡安全',   'price_ticker':'^HXR',    'vol_etf':'HACK', 'sticker':'🔒'},
+    'LIST2025':  {'name':'石油天然氣', 'price_ticker':'^DJUSEN', 'sticker':'🛢️'},
+    'LIST2008':  {'name':'銀行',       'price_ticker':'^DJUSBK', 'sticker':'🏦'},
+    'LIST2016':  {'name':'半導體',     'price_ticker':'^DJUSSC', 'sticker':'💾'},
+    'LIST23925': {'name':'存儲/硬件',  'price_ticker':'^DJUSCH', 'sticker':'💿'},
+    'LIST2110':  {'name':'生物技術',   'price_ticker':'^DJUSBT', 'sticker':'🧬'},
+    'LIST2089':  {'name':'航太國防',   'price_ticker':'^DJUSAE', 'sticker':'✈️'},
+    'LIST2145':  {'name':'必需消費',   'price_ticker':'^DJUSNC', 'sticker':'🛒'},
+    'LIST2080':  {'name':'汽車零件',   'price_ticker':'^DJUSAU', 'sticker':'🚗'},
+    'LIST2035':  {'name':'化工',       'price_ticker':'^DJUSCM', 'sticker':'🧪'},
+    'LIST2260':  {'name':'公用事業',   'price_ticker':'^DJUSUT', 'sticker':'💡'},
+    'LIST2250':  {'name':'地產信託',   'price_ticker':'^DJUSRI', 'sticker':'🏠'},
+    'LIST2065':  {'name':'電信服務',   'price_ticker':'^DJUSTL', 'sticker':'📡'},
+    'LIST2666':  {'name':'AI人工智能', 'price_ticker':'^KNGAI',  'sticker':'🤖'},
+    'LISTCLOUD': {'name':'雲計算',     'price_ticker':'^CLOUD',  'sticker':'☁️'},
+    'LISTHACK':  {'name':'網絡安全',   'price_ticker':'^HXR',    'sticker':'🔒'},
 }
 
 FUTURES = {
@@ -69,8 +69,10 @@ def main():
     signals=[]
     major=[]
     minor=[]
+    hk_tz = timezone(timedelta(hours=8))
+    now_str = datetime.now(hk_tz).strftime('%m-%d %H:%M')
     
-    print(f"=== Radar V11 開始 {datetime.now()} ===")
+    print(f"=== Radar V11 Clean 開始 {now_str} ===")
     
     for list_code, info in SECTORS.items():
         try:
@@ -78,32 +80,26 @@ def main():
             df_w_p = get_hist(info['price_ticker'], "2y", "1wk")
             df_m_p = get_hist(info['price_ticker'], "10y", "1mo")
             df_60m_p = get_hist(info['price_ticker'], "3mo", "60m")
-            df_d_v = get_hist(info['vol_etf'], "1y", "1d")
             
             if len(df_d_p)<50:
-                print(f"skip {list_code} {info['price_ticker']} 無數據, 試下富途搜唔搜到")
-                continue
-            if len(df_d_v)<2:
-                print(f"skip {list_code} vol {info['vol_etf']} 無量")
+                print(f"skip {list_code} {info['price_ticker']} 無數據")
                 continue
 
             high_50=round(float(df_d_p['High'].iloc[-50:].max()),2)
-            high_200=round(float(df_d_p['High'].iloc[-200:].max()),2) if len(df_d_p)>=200 else high_50
+            high_200=round(float(df_d_p['High'].iloc[-200:].max()),2) if len(df_d_p)>=200 else round(float(df_d_p['High'].max()),2)
             close=float(df_d_p['Close'].iloc[-1])
             dist_50=round((close/high_50-1)*100,2)
             dist_200=round((close/high_200-1)*100,2)
 
-            print(f"{list_code} {info['price_ticker']} Close:{close} Dist50:{dist_50}%")
+            print(f"{list_code} {info['name']} Close:{close} Dist50:{dist_50}%")
 
             if dist_50 >= -2.0:
-                major.append(f"🔝 {info['sticker']} {list_code} 逼近50日頂 - {info['name']} 僅{dist_50}%")
+                if close >= high_50 * 0.998 and close == df_d_p['High'].iloc[-50:].max():
+                    major.append(f"🚀 {info['sticker']} {list_code} 50日新高 - {info['name']}")
+                else:
+                    major.append(f"🔝 {info['sticker']} {list_code} 逼近50日頂 - {info['name']} 僅{dist_50}%")
             if dist_50 <= -15.0:
                 major.append(f"🔻 {info['sticker']} {list_code} 遠離高位 - {info['name']} {dist_50}% 可能超賣")
-
-            vol_today=float(df_d_v['Volume'].iloc[-1])
-            vol_yest=float(df_d_v['Volume'].iloc[-2])
-            if vol_today/vol_yest >= 2.0:
-                major.append(f"🔥 {info['sticker']} {list_code} 爆量 - {info['name']} ({info['vol_etf']}放量) {dist_50}%離高")
 
             sig="正常"
             if len(df_m_p)>=30:
@@ -114,7 +110,7 @@ def main():
                         j_now=float(j.iloc[-1]); j_prev=float(j.iloc[-2])
                         if ("頂" in div and j_now<j_prev) or ("底" in div and j_now>j_prev):
                             sig=f"月線{div}"
-                            major.append(f"🗓️ {info['sticker']} {list_code} {sig} - {info['name']}見大{'頂' if '頂' in div else '底'} {dist_200}%離200日高")
+                            major.append(f"🗓️🗓️ {info['sticker']} {list_code} {sig} - {info['name']}見大{'頂' if '頂' in div else '底'} {dist_200}%離200日高")
 
             if len(df_w_p)>=60:
                 div=find_div(df_w_p['Close'], get_dif(df_w_p['Close']))
@@ -123,7 +119,7 @@ def main():
                     major.append(f"⚠️ {info['sticker']} {list_code} 週線{div} - {info['name']}見{'頂' if '頂' in div else '底'} {dist_50}%離50日高")
 
             if len(df_60m_p)>=60:
-                df_4h=df_60m_p.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
+                df_4h=df_60m_p.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last'}).dropna()
                 if len(df_4h)>=60:
                     div=find_div(df_4h['Close'], get_dif(df_4h['Close']))
                     if div: minor.append(f"{info['sticker']} {list_code} 4H{div} - {info['name']} {dist_50}%離高")
@@ -158,18 +154,16 @@ def main():
             if signals:
                 sb.table("signals").insert(signals).execute()
             print(f"Supabase OK {len(signals)} 筆")
-        else:
-            print("無 SUPABASE_URL/KEY，跳過上傳")
     except Exception as e:
         print(f"Supabase error: {e}")
 
     all_msgs = major + [f"({m})" for m in minor]
     if all_msgs:
-        message = f"Radar V11 {datetime.now().strftime('%m-%d %H:%M')}\n\n" + "\n\n".join(all_msgs)
-        title = "Sector Radar V11 Mid+AI"
+        message = f"Radar V11 Clean {now_str}\n\n" + "\n\n".join(all_msgs)
+        title = "Sector Radar V11 Clean"
         pri = "high"
     else:
-        message = f"Radar V11 {datetime.now().strftime('%m-%d %H:%M')}\n\n今日無背離，全部板塊正常\n已掃描 {len(signals)} 個中板"
+        message = f"Radar V11 Clean {now_str}\n\n今日無背離，全部板塊正常\n已掃描 {len(signals)} 個中板"
         title = "Sector Radar V11 - No Signal"
         pri = "low"
 
