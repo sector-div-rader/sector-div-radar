@@ -1,4 +1,4 @@
-# radar_v15.3.py - 最終修正版：破極值邏輯，唔要雙頂
+# radar_v15.5.py - 最終版：雙頂雙底邏輯+包最後K線
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
@@ -58,28 +58,33 @@ def get_j(df):
     rsv=(df['Close']-low9)/(high9-low9)*100; k=rsv.ewm(com=2,adjust=False).mean(); d=k.ewm(com=2,adjust=False).mean()
     return 3*k-2*d
 
-# V15.3核心：破極值邏輯，唔要5% buffer
+# V15.5核心：雙頂雙底+包最後K線
 def find_div(p,i,lookback=60):
     p=p.dropna().iloc[-lookback:].copy()
     i=i.dropna().iloc[-lookback:].copy()
     idx=p.index.intersection(i.index); p,i=p.loc[idx],i.loc[idx]
-    if len(p)<10: return None
+    if len(p)<20: return None
 
-    # 頂背離：股價=期內最高，DIF唔係最高
-    if p.iloc[-1] >= p.max()*0.999: # 容許0.1%誤差
-        if i.iloc[-1] < i.max():
+    # 搵所有高低點，最後一根都計
+    highs = p[(p.shift(1) < p) & (p.shift(-1, fill_value=-np.inf) < p)]
+    lows = p[(p.shift(1) > p) & (p.shift(-1, fill_value=np.inf) > p)]
+
+    # 頂背離：最近2個高點，價更高但DIF更低
+    if len(highs)>=2:
+        h1,h2=highs.index[-2],highs.index[-1]
+        if p[h2] > p[h1] and i[h2] < i[h1]:
             return '頂'
-
-    # 底背離：股價=期內最低，DIF唔係最低
-    if p.iloc[-1] <= p.min()*1.001: # 容許0.1%誤差
-        if i.iloc[-1] > i.min():
+    # 底背離：最近2個低點，價更低但DIF更高
+    if len(lows)>=2:
+        l1,l2=lows.index[-2],lows.index[-1]
+        if p[l2] < p[l1] and i[l2] > i[l1]:
             return '底'
     return None
 
-# M60, W100, D30, 4H60
+# M60月, W100週, D30日, 4H60根=60d
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
-    for lv,(itv,per,lb) in [('M',('1mo','5y',60)),('W',('1wk','3y',100)),('D',('1d','6mo',30)),('4H',('1h','1mo',60))]:
+    for lv,(itv,per,lb) in [('M',('1mo','5y',60)),('W',('1wk','3y',100)),('D',('1d','6mo',30)),('4H',('1h','60d',60))]:
         try:
             df=yf.Ticker(etf).history(period=per,interval=itv)
             if len(df)<50: continue
@@ -138,7 +143,7 @@ def analyze(sigs):
 
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L=[f"Radar V15.3 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    L=[f"Radar V15.5 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
     for o in op: L.append(f"- {o}")
     L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
     if cf: L.append(""); L.append("長短週期打架"); L+=cf
@@ -175,8 +180,8 @@ def main():
         mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
         body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv=save_csv(mg,ns)
-        send_email(f"[Radar V15.3] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ V15.3已發送，破極值邏輯，DIF唔設buffer")
+        send_email(f"[Radar V15.5] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
+        print("✅ V15.5已發送，雙頂邏輯+包最後K線")
     except Exception as e:
         print(f"❌ 錯誤: {e}"); traceback.print_exc()
         try: send_email("[Radar] 執行失敗",str(e),__file__,[])
