@@ -1,4 +1,4 @@
-# radar_v13.2_html.py
+# radar_v13.2.1.py - 修復月中月線背離偵測
 import yfinance as yf
 import os
 import pandas as pd
@@ -15,6 +15,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 
+# ========== Email設定 ==========
 EMAIL_CONFIG = {
     'smtp_server': 'smtp.gmail.com',
     'smtp_port': 587,
@@ -74,14 +75,30 @@ def get_kdj(data):
     return 3 * k - 2 * d
 
 def find_div(price, indicator, lookback=60):
+    """
+    V13.2.1 修復版：月中月線都掃到
+    用波峰偵測，唔再靠固定[-20:-10]區間
+    """
     price = price.dropna().tail(lookback)
     indicator = indicator.dropna().tail(lookback)
     if len(price) < 20 or len(indicator) < 20: return None
-    p1, p2 = price.iloc[-20:-10].idxmax(), price.iloc[-10:].idxmax()
-    if pd.isna(p1) or pd.isna(p2) or p1 >= p2: return None
+
+    # 搵最近2個波峰
+    peaks = price[(price.shift(1) < price) & (price.shift(-1) < price)]
+    if len(peaks) < 2: return None
+
+    p2 = peaks.index[-1] # 最後一個高點
+    p1 = peaks.index[-2] # 上一個高點
+    if p1 >= p2: return None
+
     i1, i2 = indicator.loc[p1], indicator.loc[p2]
-    if price.loc[p2] > price.loc[p1] and i2 < i1: return '頂'
-    if price.loc[p2] < price.loc[p1] and i2 > i1: return '底'
+
+    # 頂背離：價格新高，指標新低
+    if price.loc[p2] > price.loc[p1] and i2 < i1:
+        return '頂'
+    # 底背離：價格新低，指標新高
+    if price.loc[p2] < price.loc[p1] and i2 > i1:
+        return '底'
     return None
 
 def get_hist(ticker, interval, period):
@@ -103,6 +120,7 @@ def scan_asset(ticker, info, sb_client=None):
     sigs = []
     etf_ticker = info.get('etf', ticker)
     try:
+        # 月線
         m_df = get_hist(etf_ticker, "1mo", "2y")
         if not m_df.empty:
             m_ind = get_dif(m_df)
@@ -116,6 +134,7 @@ def scan_asset(ticker, info, sb_client=None):
                 days, _ = get_div_days(etf_ticker, "1mo", "2y", "J")
                 sigs.append({**info, 'ticker':ticker, 'level':'M', 'type':f"M{m_div_k}背離[J]", 'dir':m_div_k, 'indicator':'J', 'days':max(1,days), 'weight':info.get('weight',1)})
 
+        # 周線/日線/4H
         for lv, (intv, per) in [('W',("1wk","1y")), ('D',("1d","6mo")), ('4H',("1h","3mo"))]:
             df = get_hist(etf_ticker, intv, per)
             if df.empty: continue
@@ -238,11 +257,11 @@ def build_html_email(risk_score, tech_score, cycle_score, index_score, risk_tick
         table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
         th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
         th {{ background-color: #4CAF50; color: white; }}
-     .risk-box {{ padding: 15px; border-radius: 8px; color: white; background: {risk_color}; margin: 20px 0; }}
-     .advice {{ background: #f0f0f0; padding: 15px; border-left: 4px solid {risk_color}; margin: 20px 0; }}
+    .risk-box {{ padding: 15px; border-radius: 8px; color: white; background: {risk_color}; margin: 20px 0; }}
+    .advice {{ background: #f0f0f0; padding: 15px; border-left: 4px solid {risk_color}; margin: 20px 0; }}
     </style></head><body>
         <div class="risk-box">
-            <h2>💀 Radar V13.2 {risk_text}</h2>
+            <h2>💀 Radar V13.2.1 {risk_text}</h2>
             <h1>總分 {risk_score} | 科技 {tech_score} | 週期 {cycle_score} | 指數 {index_score}</h1>
         </div>
         <div class="advice"><h3>操作建議</h3>{"<br>".join([f"• {a}" for a in advice])}</div>
@@ -252,7 +271,7 @@ def build_html_email(risk_score, tech_score, cycle_score, index_score, risk_tick
         </table>
         <h3>全部信號明細</h3>
         <pre style="background:#f5f5f5;padding:15px;border-radius:5px;">{"<br>".join(final_msgs)}</pre>
-        <p style="color:#888;font-size:12px;">Radar V13.2 | {datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M HKT')}</p>
+        <p style="color:#888;font-size:12px;">Radar V13.2.1 | {datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M HKT')}</p>
     </body></html>
     """
     return html
@@ -294,7 +313,7 @@ def main():
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
 
-    print(f"=== Radar V13.2 HTML Email 開始 {now_str} ===")
+    print(f"=== Radar V13.2.1 開始 {now_str} ===")
 
     for ticker, info in {**INDICES, **SECTORS}.items():
         all_signals += scan_asset(ticker, info, sb)
@@ -311,7 +330,7 @@ def main():
         except Exception as e: print(f"Supabase error: {e}")
 
     if not all_signals:
-        message = f"Radar V13.2 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
+        message = f"Radar V13.2.1 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
         title = "Radar - No Signal"
         requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'),
             headers={"Title": title.encode('utf-8'), "Priority": "low"}, timeout=10)
@@ -331,7 +350,7 @@ def main():
             header.append(f"月線觸發：{', '.join(risk_names)}")
         header += advice
 
-        summary_msg = f"Radar V13.2 {now_str}\n\n" + "\n\n".join(header)
+        summary_msg = f"Radar V13.2.1 {now_str}\n\n" + "\n\n".join(header)
         title = f"Risk{risk_score} T{tech}C{cycle}I{index}"
         pri = "max" if risk_score >= 13 else "high" if risk_score >= 8 else "default"
 
