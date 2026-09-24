@@ -1,4 +1,4 @@
-# radar_v15.9.py - 修正語法錯誤+統一3根間隔
+# radar_v15.20.py - Pivot高低點版，參數4H=10, D=8, W=4, M=2
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
@@ -7,7 +7,6 @@ from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from scipy.signal import find_peaks
 
 EMAIL_CONFIG = {
     'smtp_server': 'smtp.gmail.com',
@@ -59,42 +58,61 @@ def get_j(df):
     rsv=(df['Close']-low9)/(high9-low9)*100; k=rsv.ewm(com=2,adjust=False).mean(); d=k.ewm(com=2,adjust=False).mean()
     return 3*k-2*d
 
-def find_div(p, i, lookback=100, distance=3):
+def pivothigh(series, n):
+    """n: 左右各n根都低過你，先係頂"""
+    highs = []
+    for i in range(n, len(series) - n):
+        if all(series.iloc[i] > series.iloc[i-n:i]) and all(series.iloc[i] > series.iloc[i+1:i+n+1]):
+            highs.append(i)
+    return np.array(highs)
+
+def pivotlow(series, n):
+    """n: 左右各n根都高過你，先係底"""
+    lows = []
+    for i in range(n, len(series) - n):
+        if all(series.iloc[i] < series.iloc[i-n:i]) and all(series.iloc[i] < series.iloc[i+1:i+n+1]):
+            lows.append(i)
+    return np.array(lows)
+
+def find_div(p, i, lookback=100, n=5):
     p = p.dropna().iloc[-lookback:].copy()
     i = i.dropna().iloc[-lookback:].copy()
     idx = p.index.intersection(i.index)
     p, i = p.loc[idx], i.loc[idx]
-    if len(p) < 20: return None
+    if len(p) < n*2+10: return None
 
-    peaks, _ = find_peaks(p.values, distance=distance)
-    troughs, _ = find_peaks(-p.values, distance=distance)
+    highs = pivothigh(p, n=n)
+    lows = pivotlow(p, n=n)
 
-    if len(peaks) >= 2:
-        h1, h2 = peaks[-2], peaks[-1]
-        if p.iloc[h2] > p.iloc[h1] and i.iloc[h2] < i.iloc[h1]:
+    # 頂背離：價創新高/雙頂，指標新低，容許2%誤差
+    if len(highs) >= 2:
+        h1, h2 = highs[-2], highs[-1]
+        if p.iloc[h2] >= p.iloc[h1] * 0.98 and i.iloc[h2] < i.iloc[h1]:
             return '頂'
 
-    if len(troughs) >= 2:
-        l1, l2 = troughs[-2], troughs[-1]
-        if p.iloc[l2] < p.iloc[l1] and i.iloc[l2] > i.iloc[l1]:
+    # 底背離：價創新低/雙底，指標新高，容許2%誤差
+    if len(lows) >= 2:
+        l1, l2 = lows[-2], lows[-1]
+        if p.iloc[l2] <= p.iloc[l1] * 1.02 and i.iloc[l2] > i.iloc[l1]:
             return '底'
     return None
 
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
+    # 你嘅參數：4H=10, D=8, W=4, M=2
     config = [
-        ('M', ('1mo','5y',60), 3),
-        ('W', ('1wk','3y',100), 3),
-        ('D', ('1d','6mo',30), 3),
-        ('4H',('1h','60d',60), 3)
+        ('M', ('1mo','5y',60), 2), # 月K: 左右2個月，5個月獨霸
+        ('W', ('1wk','3y',100), 4), # 週K: 左右4週，2個月獨霸
+        ('D', ('1d','6mo',30), 8), # 日K: 左右8日，1.6週獨霸
+        ('4H',('1h','60d',60), 10) # 4H: 左右10根，1.6日獨霸
     ]
-    for lv,(itv,per,lb),dist in config:
+    for lv,(itv,per,lb),n in config:
         try:
             df=yf.Ticker(etf).history(period=per,interval=itv)
             if len(df)<50: continue
-            for n,f in [('DIF',get_dif),('J',get_j)]:
-                d=find_div(df['Close'],f(df),lookback=lb,distance=dist)
-                if d: sigs.append({**info,'ticker':t,'level':lv,'dir':d,'ind':n})
+            for ind_name,f in [('DIF',get_dif),('J',get_j)]:
+                d=find_div(df['Close'],f(df),lookback=lb,n=n)
+                if d: sigs.append({**info,'ticker':t,'level':lv,'dir':d,'ind':ind_name})
         except Exception as e:
             print(f"{t}-{lv}出錯: {e}")
             pass
@@ -149,7 +167,7 @@ def analyze(sigs):
 
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L=[f"Radar V15.9 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    L=[f"Radar V15.20 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
     for o in op: L.append(f"- {o}")
     L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
     if cf: L.append(""); L.append("長短週期打架"); L+=cf
@@ -186,8 +204,8 @@ def main():
         mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
         body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv=save_csv(mg,ns)
-        send_email(f"[Radar V15.9] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ V15.9已發送，全部週期統一3根間隔")
+        send_email(f"[Radar V15.20] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
+        print("✅ V15.20已發送，Pivot高低點版，參數4H=10 D=8 W=4 M=2")
     except Exception as e:
         print(f"❌ 錯誤: {e}"); traceback.print_exc()
         try: send_email("[Radar] 執行失敗",str(e),__file__,[])
