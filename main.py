@@ -1,4 +1,4 @@
-# radar_v15.9.py - 統一3根間隔版
+# radar_v15.9.py - 修正語法錯誤+統一3根間隔
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
@@ -80,14 +80,13 @@ def find_div(p, i, lookback=100, distance=3):
             return '底'
     return None
 
-# 全部統一distance=3
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
     config = [
-        ('M', ('1mo','5y',60), 3), # 月K：3個月=1浪
-        ('W', ('1wk','3y',100), 3), # 週K：3週=1浪
-        ('D', ('1d','6mo',30), 3), # 日K：3日=1浪，改咗
-        ('4H',('1h','60d',60), 3) # 4H：3根=12小時=1浪，改咗
+        ('M', ('1mo','5y',60), 3),
+        ('W', ('1wk','3y',100), 3),
+        ('D', ('1d','6mo',30), 3),
+        ('4H',('1h','60d',60), 3)
     ]
     for lv,(itv,per,lb),dist in config:
         try:
@@ -160,4 +159,38 @@ def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     h=[m for m in mg if '4H' in m['levels'] and 'D' not in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]
     for m in sorted(mw,key=lambda x:x['weight'],reverse=True): L.append(m['display'])
     if d: L+=["","-"*50,""]+[m['display'] for m in sorted(d,key=lambda x:x['weight'],reverse=True)]
-    if
+    if h: L+=["","-"*50,""]+[m['display'] for m in sorted(h,key=lambda x:x['weight'],reverse=True)]
+    L.append(""); L.append("="*50)
+    return "\n".join(L)
+
+def save_csv(mg,ns):
+    p=f"/tmp/radar_{ns}.csv"
+    with open(p,'w',newline='',encoding='utf-8-sig') as f:
+        w=csv.writer(f); w.writerow(['Ticker','名稱','時段','方向','指標','權重','類別'])
+        for m in mg: w.writerow([m['ticker'],m['name'],m['levels'],m['dir']+'背離',m['inds'],m['weight'],m['category']])
+    return p
+
+def send_email(sub,body,csv,merged):
+    text_html = f'<div style="text-align:center;font-family:Consolas,monospace;white-space:pre-wrap;line-height:1.6;">{body}</div>'
+    rows = ''.join([f"<tr><td>{m['ticker']}</td><td>{m['name']}</td><td>{m['levels']}</td><td>{m['dir']}</td><td>{m['inds']}</td><td>{m['category']}</td></tr>" for m in merged])
+    table_html = f"""<div style="text-align:center;margin-top:30px;"><table style="margin:auto;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;"><tr style="background:#2c3e50;color:white;"><th>Ticker</th><th>名稱</th><th>時段</th><th>方向</th><th>指標</th><th>類別</th></tr>{rows}</table></div>"""
+    msg=MIMEMultipart('mixed'); msg['Subject']=sub; msg['From']=EMAIL_CONFIG['sender_email']; msg['To']=EMAIL_CONFIG['receiver_email']
+    msg.attach(MIMEText(text_html+table_html,'html','utf-8'))
+    with open(csv,'rb') as f: att=MIMEApplication(f.read(),_subtype='csv'); att.add_header('Content-Disposition','attachment',filename=os.path.basename(csv)); msg.attach(att)
+    s=smtplib.SMTP(EMAIL_CONFIG['smtp_server'],EMAIL_CONFIG['smtp_port']); s.starttls(); s.login(EMAIL_CONFIG['sender_email'],EMAIL_CONFIG['sender_password']); s.send_message(msg); s.quit()
+
+def main():
+    try:
+        sigs=[];
+        for t,i in ALL.items(): sigs+=scan_asset(t,i)
+        mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
+        body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
+        csv=save_csv(mg,ns)
+        send_email(f"[Radar V15.9] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
+        print("✅ V15.9已發送，全部週期統一3根間隔")
+    except Exception as e:
+        print(f"❌ 錯誤: {e}"); traceback.print_exc()
+        try: send_email("[Radar] 執行失敗",str(e),__file__,[])
+        except: pass
+
+if __name__=='__main__': main()
