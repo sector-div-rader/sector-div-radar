@@ -1,33 +1,37 @@
-# radar_v11_clean.py - DJUS中板塊純價格背離版
+# radar_v11.py - ETF板塊 + 期貨背離版，無成交量
 import yfinance as yf
 import os
 import pandas as pd
 import requests
 from datetime import datetime, timezone, timedelta
 
-# ========== 中板塊指數，無成交量 ==========
+# ========== 板塊用ETF，數據穩定 ==========
 SECTORS = {
-    'LIST2025':  {'name':'石油天然氣', 'price_ticker':'^DJUSEN', 'sticker':'🛢️'},
-    'LIST2008':  {'name':'銀行',       'price_ticker':'^DJUSBK', 'sticker':'🏦'},
-    'LIST2016':  {'name':'半導體',     'price_ticker':'^DJUSSC', 'sticker':'💾'},
-    'LIST23925': {'name':'存儲/硬件',  'price_ticker':'^DJUSCH', 'sticker':'💿'},
-    'LIST2110':  {'name':'生物技術',   'price_ticker':'^DJUSBT', 'sticker':'🧬'},
-    'LIST2089':  {'name':'航太國防',   'price_ticker':'^DJUSAE', 'sticker':'✈️'},
-    'LIST2145':  {'name':'必需消費',   'price_ticker':'^DJUSNC', 'sticker':'🛒'},
-    'LIST2080':  {'name':'汽車零件',   'price_ticker':'^DJUSAU', 'sticker':'🚗'},
-    'LIST2035':  {'name':'化工',       'price_ticker':'^DJUSCM', 'sticker':'🧪'},
-    'LIST2260':  {'name':'公用事業',   'price_ticker':'^DJUSUT', 'sticker':'💡'},
-    'LIST2250':  {'name':'地產信託',   'price_ticker':'^DJUSRI', 'sticker':'🏠'},
-    'LIST2065':  {'name':'電信服務',   'price_ticker':'^DJUSTL', 'sticker':'📡'},
-    'LIST2666':  {'name':'AI人工智能', 'price_ticker':'^KNGAI',  'sticker':'🤖'},
-    'LISTCLOUD': {'name':'雲計算',     'price_ticker':'^CLOUD',  'sticker':'☁️'},
-    'LISTHACK':  {'name':'網絡安全',   'price_ticker':'^HXR',    'sticker':'🔒'},
+    'XLE':   {'name':'石油天然氣', 'sticker':'🛢️'},
+    'KBE':   {'name':'銀行',       'sticker':'🏦'},
+    'SMH':   {'name':'半導體',     'sticker':'💾'},
+    'IGV':   {'name':'軟件服務',   'sticker':'💿'},
+    'IBB':   {'name':'生物技術',   'sticker':'🧬'},
+    'ITA':   {'name':'航太國防',   'sticker':'✈️'},
+    'XLP':   {'name':'必需消費',   'sticker':'🛒'},
+    'CARZ':  {'name':'汽車',       'sticker':'🚗'},
+    'XLB':   {'name':'原材料',     'sticker':'🧪'},
+    'XLU':   {'name':'公用事業',   'sticker':'💡'},
+    'XLRE':  {'name':'地產',       'sticker':'🏠'},
+    'XLC':   {'name':'通訊服務',   'sticker':'📡'},
+    'BOTZ':  {'name':'AI人工智能', 'sticker':'🤖'},
+    'WCLD':  {'name':'雲計算',     'sticker':'☁️'},
+    'HACK':  {'name':'網絡安全',   'sticker':'🔒'},
 }
 
+# ========== 期貨保留 ==========
 FUTURES = {
     'GC=F':     {'name':'黃金期貨', 'sticker':'🥇'},
+    'SI=F':     {'name':'白銀期貨', 'sticker':'🥈'},
+    'CL=F':     {'name':'原油期貨', 'sticker':'⛽'},
     'DX-Y.NYB': {'name':'美元指數', 'sticker':'💵'},
-    'CL=F':     {'name':'石油期貨', 'sticker':'⛽'},
+    'ZN=F':     {'name':'十年國債', 'sticker':'📜'},
+    '^VIX':     {'name':'恐慌指數', 'sticker':'😱'},
 }
 
 def get_dif(c): 
@@ -65,83 +69,79 @@ def get_hist(ticker, period, interval):
         print(f"get_hist error {ticker}: {e}")
         return pd.DataFrame()
 
+def scan_asset(code, info, asset_type):
+    major, minor, signals = [], [], []
+    ticker = code if asset_type == "ETF" else code
+    try:
+        df_d = get_hist(ticker, "1y", "1d")
+        df_w = get_hist(ticker, "3y", "1wk")
+        df_m = get_hist(ticker, "10y", "1mo")
+        df_60m = get_hist(ticker, "3mo", "60m")
+        
+        if len(df_d)<50:
+            print(f"skip {code} 無數據")
+            return [], [], []
+
+        high_50=round(float(df_d['High'].iloc[-50:].max()),2)
+        high_200=round(float(df_d['High'].iloc[-200:].max()),2) if len(df_d)>=200 else round(float(df_d['High'].max()),2)
+        close=float(df_d['Close'].iloc[-1])
+        dist_50=round((close/high_50-1)*100,2)
+        dist_200=round((close/high_200-1)*100,2)
+
+        print(f"{code} {info['name']} Close:{close} Dist50:{dist_50}%")
+
+        if asset_type == "ETF":
+            if dist_50 >= -2.0:
+                if close >= high_50 * 0.998 and close == df_d['High'].iloc[-50:].max():
+                    major.append(f"🚀 {info['sticker']} {code} 50日新高 - {info['name']}")
+                else:
+                    major.append(f"🔝 {info['sticker']} {code} 逼近50日頂 - {info['name']} 僅{dist_50}%")
+            if dist_50 <= -15.0:
+                major.append(f"🔻 {info['sticker']} {code} 遠離高位 - {info['name']} {dist_50}% 可能超賣")
+
+        sig="正常"
+        if len(df_m)>=30:
+            j=get_kdj(df_m).dropna()
+            if len(j)>=5:
+                div=find_div(df_m['Close'].loc[j.index], j)
+                if div:
+                    j_now=float(j.iloc[-1]); j_prev=float(j.iloc[-2])
+                    if ("頂" in div and j_now<j_prev) or ("底" in div and j_now>j_prev):
+                        sig=f"月線{div}"
+                        major.append(f"🗓️🗓️ {info['sticker']} {code} {sig} - {info['name']}見大{'頂' if '頂' in div else '底'}")
+
+        if len(df_w)>=60:
+            div=find_div(df_w['Close'], get_dif(df_w['Close']))
+            if div:
+                if sig=="正常": sig=f"週線{div}"
+                major.append(f"⚠️ {info['sticker']} {code} 週線{div} - {info['name']}見{'頂' if '頂' in div else '底'}")
+
+        if len(df_60m)>=60:
+            df_4h=df_60m.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last'}).dropna()
+            if len(df_4h)>=60:
+                div=find_div(df_4h['Close'], get_dif(df_4h['Close']))
+                if div: minor.append(f"{info['sticker']} {code} 4H{div} - {info['name']}")
+
+        signals.append({"ticker":code, "name_cn":info['name'], "dist_50d":dist_50, "dist_200d":dist_200, "signal":sig, "type":asset_type})
+    except Exception as e:
+        print(f"skip {code} {e}")
+    
+    return major, minor, signals
+
 def main():
-    signals=[]
-    major=[]
-    minor=[]
+    signals, major, minor = [], [], []
     hk_tz = timezone(timedelta(hours=8))
     now_str = datetime.now(hk_tz).strftime('%m-%d %H:%M')
     
-    print(f"=== Radar V11 Clean 開始 {now_str} ===")
+    print(f"=== Radar V11 ETF+Futures 開始 {now_str} ===")
     
-    for list_code, info in SECTORS.items():
-        try:
-            df_d_p = get_hist(info['price_ticker'], "1y", "1d")
-            df_w_p = get_hist(info['price_ticker'], "2y", "1wk")
-            df_m_p = get_hist(info['price_ticker'], "10y", "1mo")
-            df_60m_p = get_hist(info['price_ticker'], "3mo", "60m")
-            
-            if len(df_d_p)<50:
-                print(f"skip {list_code} {info['price_ticker']} 無數據")
-                continue
+    for ticker, info in SECTORS.items():
+        ma, mi, sig = scan_asset(ticker, info, "ETF")
+        major += ma; minor += mi; signals += sig
 
-            high_50=round(float(df_d_p['High'].iloc[-50:].max()),2)
-            high_200=round(float(df_d_p['High'].iloc[-200:].max()),2) if len(df_d_p)>=200 else round(float(df_d_p['High'].max()),2)
-            close=float(df_d_p['Close'].iloc[-1])
-            dist_50=round((close/high_50-1)*100,2)
-            dist_200=round((close/high_200-1)*100,2)
-
-            print(f"{list_code} {info['name']} Close:{close} Dist50:{dist_50}%")
-
-            if dist_50 >= -2.0:
-                if close >= high_50 * 0.998 and close == df_d_p['High'].iloc[-50:].max():
-                    major.append(f"🚀 {info['sticker']} {list_code} 50日新高 - {info['name']}")
-                else:
-                    major.append(f"🔝 {info['sticker']} {list_code} 逼近50日頂 - {info['name']} 僅{dist_50}%")
-            if dist_50 <= -15.0:
-                major.append(f"🔻 {info['sticker']} {list_code} 遠離高位 - {info['name']} {dist_50}% 可能超賣")
-
-            sig="正常"
-            if len(df_m_p)>=30:
-                j=get_kdj(df_m_p).dropna()
-                if len(j)>=5:
-                    div=find_div(df_m_p['Close'].loc[j.index], j)
-                    if div:
-                        j_now=float(j.iloc[-1]); j_prev=float(j.iloc[-2])
-                        if ("頂" in div and j_now<j_prev) or ("底" in div and j_now>j_prev):
-                            sig=f"月線{div}"
-                            major.append(f"🗓️🗓️ {info['sticker']} {list_code} {sig} - {info['name']}見大{'頂' if '頂' in div else '底'} {dist_200}%離200日高")
-
-            if len(df_w_p)>=60:
-                div=find_div(df_w_p['Close'], get_dif(df_w_p['Close']))
-                if div:
-                    if sig=="正常": sig=f"週線{div}"
-                    major.append(f"⚠️ {info['sticker']} {list_code} 週線{div} - {info['name']}見{'頂' if '頂' in div else '底'} {dist_50}%離50日高")
-
-            if len(df_60m_p)>=60:
-                df_4h=df_60m_p.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last'}).dropna()
-                if len(df_4h)>=60:
-                    div=find_div(df_4h['Close'], get_dif(df_4h['Close']))
-                    if div: minor.append(f"{info['sticker']} {list_code} 4H{div} - {info['name']} {dist_50}%離高")
-
-            signals.append({"etf":list_code, "name_cn":info['name'], "price_ticker":info['price_ticker'], "high_50d":high_50, "high_200d":high_200, "dist_50d":dist_50, "dist_200d":dist_200, "signal":sig})
-        except Exception as e:
-            print(f"skip {list_code} {e}")
-
-    for fut_code, info in FUTURES.items():
-        try:
-            df_w = get_hist(fut_code, "2y", "1wk")
-            df_m = get_hist(fut_code, "10y", "1mo")
-            if len(df_m)>=30:
-                j=get_kdj(df_m).dropna()
-                if len(j)>=5:
-                    div=find_div(df_m['Close'].loc[j.index], j)
-                    if div: major.append(f"🗓️ {info['sticker']} {fut_code} 月線{div} - {info['name']}")
-            if len(df_w)>=60:
-                div=find_div(df_w['Close'], get_dif(df_w['Close']))
-                if div: major.append(f"⚠️ {info['sticker']} {fut_code} 週線{div} - {info['name']}")
-        except Exception as e:
-            print(f"skip {fut_code} {e}")
+    for ticker, info in FUTURES.items():
+        ma, mi, sig = scan_asset(ticker, info, "FUT")
+        major += ma; minor += mi; signals += sig
 
     # Supabase
     try:
@@ -150,7 +150,7 @@ def main():
         key = os.environ.get('SUPABASE_KEY')
         if url and key:
             sb=create_client(url, key)
-            sb.table("signals").delete().neq("etf","XXX").execute()
+            sb.table("signals").delete().neq("ticker","XXX").execute()
             if signals:
                 sb.table("signals").insert(signals).execute()
             print(f"Supabase OK {len(signals)} 筆")
@@ -159,12 +159,12 @@ def main():
 
     all_msgs = major + [f"({m})" for m in minor]
     if all_msgs:
-        message = f"Radar V11 Clean {now_str}\n\n" + "\n\n".join(all_msgs)
-        title = "Sector Radar V11 Clean"
+        message = f"Radar V11 {now_str}\n\n" + "\n\n".join(all_msgs)
+        title = "Sector+Futures Radar"
         pri = "high"
     else:
-        message = f"Radar V11 Clean {now_str}\n\n今日無背離，全部板塊正常\n已掃描 {len(signals)} 個中板"
-        title = "Sector Radar V11 - No Signal"
+        message = f"Radar V11 {now_str}\n\n今日無背離\n已掃描 {len(signals)} 個資產"
+        title = "Radar - No Signal"
         pri = "low"
 
     print("\n" + message + "\n")
