@@ -1,7 +1,6 @@
 import yfinance as yf, os, pandas as pd, requests
 from datetime import datetime
 
-# 真板塊價 = 標普行業指數，量 = ETF
 SECTORS = {
     'LIST2025':  {'name':'石油天然氣', 'price_ticker':'^SP500-10', 'vol_etf':'XLE',  'sticker':'🛢️'},
     'LIST2008':  {'name':'銀行',       'price_ticker':'^SP500-40', 'vol_etf':'XLF',  'sticker':'🏦'},
@@ -28,6 +27,8 @@ def get_kdj(df):
     rsv=(df['Close']-low)/(high-low)*100
     k=rsv.ewm(com=2, adjust=False).mean(); d=k.ewm(com=2, adjust=False).mean()
     return 3*k-2*d
+
+# V10.5 放寬：0.98->0.95 / 1.02->1.05
 def find_div(p,i):
     if len(p)<30: return None
     p=p.iloc[-60:]; i=i.iloc[-60:]
@@ -36,8 +37,8 @@ def find_div(p,i):
     curr_p=float(p.iloc[-1]); curr_i=float(i.iloc[-1])
     peak_p=float(p.loc[s.idxmax()]); trough_p=float(p.loc[s.idxmin()])
     peak_i=float(i.loc[s.idxmax()]); trough_i=float(i.loc[s.idxmin()])
-    if curr_p>=peak_p*0.98 and curr_i<peak_i*0.97: return "頂背離"
-    if curr_p<=trough_p*1.02 and curr_i>trough_i*1.03: return "底背離"
+    if curr_p>=peak_p*0.95 and curr_i<peak_i*0.97: return "頂背離"
+    if curr_p<=trough_p*1.05 and curr_i>trough_i*1.03: return "底背離"
     return None
 
 def get_hist(ticker, period, interval):
@@ -45,6 +46,7 @@ def get_hist(ticker, period, interval):
     except: return pd.DataFrame()
 
 signals=[]; major=[]; minor=[]
+
 for list_code, info in SECTORS.items():
     try:
         df_d_p = get_hist(info['price_ticker'], "1y", "1d")
@@ -52,16 +54,24 @@ for list_code, info in SECTORS.items():
         df_m_p = get_hist(info['price_ticker'], "10y", "1mo")
         df_60m_p = get_hist(info['price_ticker'], "3mo", "60m")
         df_d_v = get_hist(info['vol_etf'], "1y", "1d")
-        if len(df_d_p)<210 or len(df_d_v)<2: 
-            print(f"skip {list_code} {info['price_ticker']} no data"); continue
+        if len(df_d_p)<210 or len(df_d_v)<2: continue
+        
         high_50=round(float(df_d_p['High'].iloc[-50:].max()),2)
         high_200=round(float(df_d_p['High'].iloc[-200:].max()),2)
         close=float(df_d_p['Close'].iloc[-1])
         dist_50=round((close/high_50-1)*100,2)
         dist_200=round((close/high_200-1)*100,2)
+
+        # V10.5 新增：逼近頂底提示
+        if dist_50 >= -2.0:
+            major.append(f"🔝 {info['sticker']} {list_code} 逼近50日頂 - {info['name']} 僅{dist_50}%離高")
+        if dist_50 <= -15.0:
+            major.append(f"🔻 {info['sticker']} {list_code} 遠離高位 - {info['name']} {dist_50}%離50日高 可能超賣")
+
         vol_today=float(df_d_v['Volume'].iloc[-1]); vol_yest=float(df_d_v['Volume'].iloc[-2])
         if vol_today/vol_yest >= 2.0:
             major.append(f"🔥 {info['sticker']} {list_code} 爆量 - {info['name']} ({info['vol_etf']}放量) {dist_50}%離50日高")
+
         sig="正常"
         if len(df_m_p)>=30:
             j=get_kdj(df_m_p).dropna()
@@ -72,18 +82,22 @@ for list_code, info in SECTORS.items():
                     if ("頂" in div and j_now<j_prev) or ("底" in div and j_now>j_prev):
                         sig=f"月線{div}"
                         major.append(f"🗓️ {info['sticker']} {list_code} {sig} - {info['name']}見大{'頂' if '頂' in div else '底'} {dist_200}%離200日高")
+
         if len(df_w_p)>=60:
             div=find_div(df_w_p['Close'], get_dif(df_w_p['Close']))
             if div:
                 if sig=="正常": sig=f"週線{div}"
                 major.append(f"⚠️ {info['sticker']} {list_code} 週線{div} - {info['name']}見{'頂' if '頂' in div else '底'} {dist_50}%離50日高")
+
         if len(df_60m_p)>=60:
             df_4h=df_60m_p.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
             if len(df_4h)>=60:
                 div=find_div(df_4h['Close'], get_dif(df_4h['Close']))
                 if div: minor.append(f"{info['sticker']} {list_code} 4H{div} - {info['name']} {dist_50}%離高")
+
         signals.append({"etf":list_code, "name_cn":info['name'], "price_ticker":info['price_ticker'], "high_50d":high_50, "high_200d":high_200, "dist_50d":dist_50, "dist_200d":dist_200, "signal":sig})
-    except Exception as e: print(f"skip {list_code} {e}")
+    except Exception as e:
+        print(f"skip {list_code} {e}")
 
 for fut_code, info in FUTURES.items():
     try:
@@ -108,6 +122,10 @@ except Exception as e: print(e)
 
 all_msgs = major + [f"({m})" for m in minor]
 if all_msgs:
-    message = f"Radar V10.4 {datetime.now().strftime('%m-%d %H:%M')}\n\n" + "\n\n".join(all_msgs)
-    requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title": "Sector Radar V10.4 Real Index", "Priority":"high"}, timeout=10)
+    message = f"Radar V10.5 {datetime.now().strftime('%m-%d %H:%M')}\n\n" + "\n\n".join(all_msgs)
+    requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title": "Sector Radar V10.5", "Priority":"high"}, timeout=10)
     print("ntfy sent")
+else:
+    # 乜都冇都報一報，等你知佢有跑
+    message = f"Radar V10.5 {datetime.now().strftime('%m-%d %H:%M')}\n\n今日無背離，全部板塊正常"
+    requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title": "Sector Radar V10.5 - No Signal", "Priority":"low"}, timeout=10)
