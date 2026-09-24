@@ -1,4 +1,4 @@
-# radar_v13.3_email_html.py
+# radar_v13.2_html.py
 import yfinance as yf
 import os
 import pandas as pd
@@ -81,6 +81,7 @@ def find_div(price, indicator, lookback=60):
     if pd.isna(p1) or pd.isna(p2) or p1 >= p2: return None
     i1, i2 = indicator.loc[p1], indicator.loc[p2]
     if price.loc[p2] > price.loc[p1] and i2 < i1: return '頂'
+    if price.loc[p2] < price.loc[p1] and i2 > i1: return '底'
     return None
 
 def get_hist(ticker, interval, period):
@@ -147,9 +148,14 @@ def merge_signals(sigs):
 def analyze_risk(sigs):
     tech, cycle, index = 0, 0, 0
     tech_tickers, cycle_tickers, index_tickers = set(), set(), set()
+
     for s in sigs:
-        if s['level']!= 'M': continue
-        w = s.get('weight', 1)
+        # V13.2邏輯：M*5分 + W*2分 + D*1分
+        if s['level']=='M': w = s.get('weight',1) * 5
+        elif s['level']=='W': w = 2
+        elif s['level']=='D': w = 1
+        else: w = 0
+
         idx = s['index']
         if idx == 'NDX': tech += w; tech_tickers.add(s['ticker'])
         elif idx == 'SPX': cycle += w; cycle_tickers.add(s['ticker'])
@@ -158,7 +164,7 @@ def analyze_risk(sigs):
     risk_score = tech + cycle + index
     advice = []
 
-    if index >= 5 and risk_score >= 13:
+    if index >= 10 and risk_score >= 13:
         advice = [
             "🚨 大熊市實錘：2000/2007級別股災，SPX/NDX/DJI全滅",
             "操作：清倉避險資產、ES/NQ做空、國債/黃金對沖",
@@ -166,13 +172,13 @@ def analyze_risk(sigs):
             f"主要影響：美股三大指數期貨 + 週期股",
             f"觸發：{', '.join([ALL_ASSETS[t]['name'] for t in index_tickers])}"
         ]
-    elif tech >= 5 and risk_score >= 8:
+    elif tech >= 10 and risk_score >= 8:
         advice = [
             "⚠️ 科技股災：科網股重災區，QQQ/ARKK重創",
             "操作：科技股清倉、SMH/SOXL止損、減槓桿",
             f"觸發：{', '.join([ALL_ASSETS[t]['name'] for t in tech_tickers])}"
         ]
-    elif cycle >= 5 and risk_score >= 5:
+    elif cycle >= 10 and risk_score >= 5:
         advice = [
             "🔄 經濟衰退：週期股殺跌，SPY/DIA受累",
             "操作：週期股減倉、XLE/KBE止損、防守股",
@@ -232,11 +238,11 @@ def build_html_email(risk_score, tech_score, cycle_score, index_score, risk_tick
         table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
         th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
         th {{ background-color: #4CAF50; color: white; }}
-      .risk-box {{ padding: 15px; border-radius: 8px; color: white; background: {risk_color}; margin: 20px 0; }}
-      .advice {{ background: #f0f0f0; padding: 15px; border-left: 4px solid {risk_color}; margin: 20px 0; }}
+     .risk-box {{ padding: 15px; border-radius: 8px; color: white; background: {risk_color}; margin: 20px 0; }}
+     .advice {{ background: #f0f0f0; padding: 15px; border-left: 4px solid {risk_color}; margin: 20px 0; }}
     </style></head><body>
         <div class="risk-box">
-            <h2>💀 Radar V13.3 {risk_text}</h2>
+            <h2>💀 Radar V13.2 {risk_text}</h2>
             <h1>總分 {risk_score} | 科技 {tech_score} | 週期 {cycle_score} | 指數 {index_score}</h1>
         </div>
         <div class="advice"><h3>操作建議</h3>{"<br>".join([f"• {a}" for a in advice])}</div>
@@ -246,7 +252,7 @@ def build_html_email(risk_score, tech_score, cycle_score, index_score, risk_tick
         </table>
         <h3>全部信號明細</h3>
         <pre style="background:#f5f5f5;padding:15px;border-radius:5px;">{"<br>".join(final_msgs)}</pre>
-        <p style="color:#888;font-size:12px;">Radar V13.3 | {datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M HKT')}</p>
+        <p style="color:#888;font-size:12px;">Radar V13.2 | {datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M HKT')}</p>
     </body></html>
     """
     return html
@@ -283,10 +289,12 @@ def main():
     all_signals = []
     hk_tz = timezone(timedelta(hours=8))
     now_str = datetime.now(hk_tz).strftime('%m-%d %H:%M')
+
     url = os.environ.get('SUPABASE_URL')
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
-    print(f"=== Radar V13.3 HTML Email 開始 {now_str} ===")
+
+    print(f"=== Radar V13.2 HTML Email 開始 {now_str} ===")
 
     for ticker, info in {**INDICES, **SECTORS}.items():
         all_signals += scan_asset(ticker, info, sb)
@@ -303,7 +311,7 @@ def main():
         except Exception as e: print(f"Supabase error: {e}")
 
     if not all_signals:
-        message = f"Radar V13.3 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
+        message = f"Radar V13.2 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
         title = "Radar - No Signal"
         requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'),
             headers={"Title": title.encode('utf-8'), "Priority": "low"}, timeout=10)
@@ -311,19 +319,22 @@ def main():
     else:
         risk_score, tech, cycle, index, risk_tickers, advice = analyze_risk(all_signals)
         final_msgs = merge_signals(all_signals)
+
         header = []
         if risk_score >= 13: header.append(f"💀 末日級別 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
         elif risk_score >= 8: header.append(f"🚨 系統風險 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
         elif risk_score >= 5: header.append(f"⚠️ 高風險 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
         else: header.append(f"📊 風險分數 總分{risk_score} 科技{tech} 週期{cycle} 指數{index}")
+
         if risk_tickers:
             risk_names = [f"{t}({ALL_ASSETS[t]['name']})" for t in risk_tickers]
             header.append(f"月線觸發：{', '.join(risk_names)}")
         header += advice
 
-        summary_msg = f"Radar V13.3 {now_str}\n\n" + "\n\n".join(header)
+        summary_msg = f"Radar V13.2 {now_str}\n\n" + "\n\n".join(header)
         title = f"Risk{risk_score} T{tech}C{cycle}I{index}"
         pri = "max" if risk_score >= 13 else "high" if risk_score >= 8 else "default"
+
         requests.post("https://ntfy.sh/sector-radar-ivan117", data=summary_msg.encode('utf-8'),
             headers={"Title": f"💀 {title}".encode('utf-8'), "Priority": pri}, timeout=10)
         time.sleep(2)
