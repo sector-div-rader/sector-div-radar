@@ -1,4 +1,4 @@
-# radar_v15.21.py - Pivot高低點版，參數4H=8, D=5, W=5, M=2
+# radar_v15.22.py - Pivot高低點版，參數4H=12, D=10, W=5, M=2
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
@@ -99,12 +99,12 @@ def find_div(p, i, lookback=100, n=5):
 
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
-    # 進取參數：4H=8, D=5, W=5, M=2
+    # 保守參數：4H=12, D=10, W=5, M=2
     config = [
         ('M', ('1mo','5y',60), 2), # 月K: 左右2個月，5個月獨霸
-        ('W', ('1wk','3y',100), 5), # 週K: 左右5週，2.5個月獨霸，XLB黃金位
-        ('D', ('1d','6mo',30), 5), # 日K: 左右5日，1週獨霸，有浪出
-        ('4H',('1h','60d',60), 8) # 4H: 左右8根，1.3日獨霸
+        ('W', ('1wk','3y',100), 5), # 週K: 左右5週，2.5個月獨霸，黃金位
+        ('D', ('1d','6mo',30), 10), # 日K: 左右10日，2週獨霸，準但少
+        ('4H',('1h','60d',60), 12) # 4H: 左右12根，2日獨霸
     ]
     for lv,(itv,per,lb),n in config:
         try:
@@ -167,7 +167,7 @@ def analyze(sigs):
 
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L=[f"Radar V15.21 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    L=[f"Radar V15.22 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
     for o in op: L.append(f"- {o}")
     L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
     if cf: L.append(""); L.append("長短週期打架"); L+=cf
@@ -204,8 +204,8 @@ def main():
         mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
         body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv=save_csv(mg,ns)
-        send_email(f"[Radar V15.21] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ V15.21已發送，參數4H=8 D=5 W=5 M=2")
+        send_email(f"[Radar V15.22] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
+        print("✅ V15.22已發送，參數4H=12 D=10 W=5 M=2 保守版")
     except Exception as e:
         print(f"❌ 錯誤: {e}"); traceback.print_exc()
         try: send_email("[Radar] 執行失敗",str(e),__file__,[])
