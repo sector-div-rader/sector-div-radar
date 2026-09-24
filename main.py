@@ -1,4 +1,4 @@
-# radar_v15.23.py - 靈敏雙軌背離+即時偵測版，參數4H=6, D=5, W=3, M=2
+# radar_v15.24_0dte.py - QQQ 末日期權 (0DTE) 早上 9 點定時戰術版
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
@@ -16,35 +16,26 @@ EMAIL_CONFIG = {
     'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
 }
 
+# 聚焦科技股與核心大盤
 INDICES = {
-    'ES=F': {'name':'標普500期貨','sticker':'📈','weight':5,'index':'SPX','etf':'SPY'},
     'NQ=F': {'name':'納指100期貨','sticker':'📱','weight':5,'index':'NDX','etf':'QQQ'},
-    'YM=F': {'name':'道指期貨','sticker':'🏛️','weight':3,'index':'DJI','etf':'DIA'},
+    'ES=F': {'name':'標普500期貨','sticker':'📈','weight':5,'index':'SPX','etf':'SPY'},
+    'YM=F': {'name':'道指期貨','sticker':'🏛️','weight':2,'index':'DJI','etf':'DIA'},
 }
 SECTORS = {
-    'XLE':{'name':'美股石油天然氣','sticker':'🛢️','weight':2,'index':'SPX'},
-    'KBE':{'name':'美股銀行','sticker':'🏦','weight':2,'index':'SPX'},
-    'SMH':{'name':'美股半導體','sticker':'💾','weight':3,'index':'NDX'},
+    'SMH':{'name':'美股半導體(核心)','sticker':'💾','weight':4,'index':'NDX'},
     'IGV':{'name':'美股軟件服務','sticker':'💿','weight':3,'index':'NDX'},
-    'IBB':{'name':'美股生物技術','sticker':'🧬','weight':1,'index':'SPX'},
-    'ITA':{'name':'美股航太國防','sticker':'✈️','weight':1,'index':'SPX'},
-    'XLP':{'name':'美股必需消費','sticker':'🛒','weight':1,'index':'SPX'},
-    'CARZ':{'name':'美股汽車','sticker':'🚗','weight':2,'index':'SPX'},
-    'XLB':{'name':'美股原材料','sticker':'🧪','weight':2,'index':'SPX'},
-    'XLU':{'name':'美股公用事業','sticker':'💡','weight':1,'index':'SPX'},
-    'XLRE':{'name':'美股地產','sticker':'🏠','weight':2,'index':'SPX'},
-    'XLC':{'name':'美股通訊服務','sticker':'📡','weight':2,'index':'NDX'},
-    'BOTZ':{'name':'美股AI人工智能','sticker':'🤖','weight':3,'index':'NDX'},
-    'WCLD':{'name':'美股雲計算','sticker':'☁️','weight':3,'index':'NDX'},
+    'BOTZ':{'name':'美股AI概念','sticker':'🤖','weight':3,'index':'NDX'},
+    'WCLD':{'name':'美股雲計算','sticker':'☁️','weight':2,'index':'NDX'},
     'HACK':{'name':'美股網絡安全','sticker':'🔒','weight':2,'index':'NDX'},
+    'XLC':{'name':'美股通訊服務','sticker':'📡','weight':2,'index':'NDX'},
+    'KBE':{'name':'美股銀行','sticker':'🏦','weight':1,'index':'SPX'},
+    'XLE':{'name':'美股石油','sticker':'🛢️','weight':1,'index':'SPX'},
 }
 FUTURES = {
-    'GC=F':{'name':'黃金期貨','sticker':'🥇','index':'GOLD'},
-    'SI=F':{'name':'白銀期貨','sticker':'🥈','index':'SILVER'},
-    'CL=F':{'name':'原油期貨','sticker':'⛽','index':'OIL'},
     'DX-Y.NYB':{'name':'美元指數','sticker':'💵','index':'DXY'},
-    'ZN=F':{'name':'十年國債','sticker':'📜','index':'BOND'},
     '^VIX':{'name':'恐慌指數','sticker':'😱','index':'VIX'},
+    'ZN=F':{'name':'十年國債','sticker':'📜','index':'BOND'},
 }
 ALL = {**INDICES, **SECTORS, **FUTURES}
 
@@ -57,7 +48,7 @@ def get_j(df):
     low9 = df['Low'].rolling(9).min()
     high9 = df['High'].rolling(9).max()
     rsv = (df['Close'] - low9) / (high9 - low9) * 100
-    rsv = rsv.fillna(50)  # 防止除以 0 產生 NaN
+    rsv = rsv.fillna(50)
     k = rsv.ewm(com=2, adjust=False).mean()
     d = k.ewm(com=2, adjust=False).mean()
     return 3 * k - 2 * d
@@ -78,12 +69,11 @@ def pivotlow(series, n):
             lows.append(i)
     return np.array(lows)
 
-def find_div_advanced(p, i, lookback=100, n=5):
+def find_div_0dte(p, i, lookback=80, n=5):
     """
-    升級版雙軌背離偵測：
-    1. 修正數據對齊問題
-    2. 支援「即時價格 vs 上一個 Pivot」零延遲偵測
-    3. 支援「結構性 Pivot vs Pivot」背離比對
+    0DTE 專用背離邏輯：
+    1. 專注已收盤確認的 Pivot，避開盤中未定型雜訊。
+    2. 容許微幅破位/假突破 (1.5%)。
     """
     df = pd.DataFrame({'price': p, 'ind': i}).dropna().tail(lookback)
     if len(df) < n * 2 + 5:
@@ -95,33 +85,16 @@ def find_div_advanced(p, i, lookback=100, n=5):
     highs = pivothigh(p_s, n=n)
     lows = pivotlow(p_s, n=n)
 
-    curr_p = p_s.iloc[-1]
-    curr_i = i_s.iloc[-1]
-
-    # ---------------- 頂背離檢測 (Bearish) ----------------
-    # 模式 A：最新現價即時突破上一頂，但指標跟唔上 (零延遲)
-    if len(highs) >= 1:
-        last_h = highs[-1]
-        if curr_p >= p_s.iloc[last_h] * 0.995 and curr_i < i_s.iloc[last_h]:
-            return '頂'
-
-    # 模式 B：最後兩個已確認的 Pivot 形成背離 (結構性)
+    # 頂背離 (Bearish)
     if len(highs) >= 2:
         h1, h2 = highs[-2], highs[-1]
-        if p_s.iloc[h2] >= p_s.iloc[h1] * 0.98 and i_s.iloc[h2] < i_s.iloc[h1]:
+        if p_s.iloc[h2] >= p_s.iloc[h1] * 0.985 and i_s.iloc[h2] < i_s.iloc[h1]:
             return '頂'
 
-    # ---------------- 底背離檢測 (Bullish) ----------------
-    # 模式 A：最新現價即時跌穿上一底，但指標底比底高 (零延遲)
-    if len(lows) >= 1:
-        last_l = lows[-1]
-        if curr_p <= p_s.iloc[last_l] * 1.005 and curr_i > i_s.iloc[last_l]:
-            return '底'
-
-    # 模式 B：最後兩個已確認的 Pivot 形成背離
+    # 底背離 (Bullish)
     if len(lows) >= 2:
         l1, l2 = lows[-2], lows[-1]
-        if p_s.iloc[l2] <= p_s.iloc[l1] * 1.02 and i_s.iloc[l2] > i_s.iloc[l1]:
+        if p_s.iloc[l2] <= p_s.iloc[l1] * 1.015 and i_s.iloc[l2] > i_s.iloc[l1]:
             return '底'
 
     return None
@@ -130,12 +103,15 @@ def scan_asset(t, info):
     sigs = []
     etf = info.get('etf', t)
     
-    # 靈敏型時框配置 (縮小 n 值以提升捕捉效率)
+    # 0DTE 時框配置：
+    # 4H (n=4): 專攻今晚至明晚戰術轉折 (~2天)
+    # 日線 (n=5): 鎖定上一週 Swing (~1星期)
+    # 週/月 (n=3,2): 鎖定宏觀大多/大空局勢
     config = [
-        ('M',  ('1mo', '5y',  60), 2),  # 月K: 左右2個月
-        ('W',  ('1wk', '3y', 100), 3),  # 週K: 左右3週 (~半個月)
-        ('D',  ('1d',  '6mo', 30), 5),  # 日K: 左右5日 (~1星期)
-        ('4H', ('1h',  '60d', 60), 6)   # 4H:  左右6根 (1日)
+        ('M',  ('1mo', '5y',  60), 2),
+        ('W',  ('1wk', '3y', 100), 3),
+        ('D',  ('1d',  '6mo', 30), 5),
+        ('4H', ('1h',  '60d', 60), 4)
     ]
     
     for lv, (itv, per, lb), n in config:
@@ -144,21 +120,21 @@ def scan_asset(t, info):
             if len(df) < 40:
                 continue
             
-            # 1. 檢測 DIF (MACD) 背離
+            # 1. DIF 背離
             dif_series = get_dif(df)
-            d_dif = find_div_advanced(df['Close'], dif_series, lookback=lb, n=n)
+            d_dif = find_div_0dte(df['Close'], dif_series, lookback=lb, n=n)
             if d_dif:
                 sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_dif, 'ind': 'DIF'})
 
-            # 2. 檢測 J 值背離 (加入超買超賣過濾，排除中軸無效訊號)
+            # 2. J 值背離 (嚴格過濾：超買 > 80，超賣 < 20)
             j_series = get_j(df)
             curr_j = j_series.iloc[-1]
-            d_j = find_div_advanced(df['Close'], j_series, lookback=lb, n=n)
+            d_j = find_div_0dte(df['Close'], j_series, lookback=lb, n=n)
             
             if d_j:
-                if '頂' in d_j and curr_j > 60:
+                if d_j == '頂' and curr_j > 80:
                     sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
-                elif '底' in d_j and curr_j < 40:
+                elif d_j == '底' and curr_j < 20:
                     sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
 
         except Exception as e:
@@ -170,9 +146,7 @@ def scan_asset(t, info):
 def merge_signals(sigs):
     g = {}
     for s in sigs:
-        # 清理方向，統一以 '頂' 或 '底' 歸類
-        clean_dir = '頂' if '頂' in s['dir'] else '底'
-        g.setdefault((s['ticker'], clean_dir), []).append(s)
+        g.setdefault((s['ticker'], s['dir']), []).append(s)
         
     m = []
     for (t, d), its in g.items():
@@ -185,7 +159,7 @@ def merge_signals(sigs):
         all_lv = sorted(set(sum([v.split('+') for v in lv.values()], [])), key=lambda x: {'4H': 1, 'D': 2, 'W': 3, 'M': 4}[x], reverse=True)
         lv_str = '+'.join(all_lv)
         ind = '+'.join(sorted(lv.keys()))
-        emoji = '🗓️' if 'M' in lv_str else '📅' if 'W' in lv_str else '⚠️' if 'D' in lv_str else '💾'
+        emoji = '🚨' if t in ['NQ=F', 'QQQ', 'SMH'] else '🗓️' if 'M' in lv_str else '📅' if 'W' in lv_str else '⚠️' if 'D' in lv_str else '💾'
         cat = '科技' if info['index'] == 'NDX' else '週期' if info['index'] == 'SPX' else '指數'
         m.append({
             'ticker': t,
@@ -202,86 +176,75 @@ def merge_signals(sigs):
 def detect_conflicts(sigs):
     b = {}
     for s in sigs:
-        clean_dir = '頂' if '頂' in s['dir'] else '底'
-        s_copy = {**s, 'clean_dir': clean_dir}
-        b.setdefault(s['ticker'], []).append(s_copy)
+        b.setdefault(s['ticker'], []).append(s)
         
     c = []
     for t, its in b.items():
-        lt = [i for i in its if i['level'] in ('M', 'W', 'D') and i['clean_dir'] == '頂']
-        lb = [i for i in its if i['level'] in ('M', 'W', 'D') and i['clean_dir'] == '底']
-        ht = [i for i in its if i['level'] == '4H' and i['clean_dir'] == '頂']
-        hb = [i for i in its if i['level'] == '4H' and i['clean_dir'] == '底']
+        lt = [i for i in its if i['level'] in ('M', 'W', 'D') and i['dir'] == '頂']
+        lb = [i for i in its if i['level'] in ('M', 'W', 'D') and i['dir'] == '底']
+        ht = [i for i in its if i['level'] == '4H' and i['dir'] == '頂']
+        hb = [i for i in its if i['level'] == '4H' and i['dir'] == '底']
         
         if lt and hb:
             lv = '+'.join(sorted(set([i['level'] for i in lt]), key=lambda x: {'M': 1, 'W': 2, 'D': 3}[x], reverse=True))
-            c.append(f"⚠️ {t} | {lv}頂背離 但 4H底背離 | {ALL[t]['name']} – 長空短多")
+            c.append(f"⚠️ {t} | {lv}頂背離 但 4H底背離 | {ALL[t]['name']} – 長空短多 (今晚忌盲目追空)")
         if lb and ht:
             lv = '+'.join(sorted(set([i['level'] for i in lb]), key=lambda x: {'M': 1, 'W': 2, 'D': 3}[x], reverse=True))
-            c.append(f"⚠️ {t} | {lv}底背離 但 4H頂背離 | {ALL[t]['name']} – 長多短空")
+            c.append(f"⚠️ {t} | {lv}底背離 但 4H頂背離 | {ALL[t]['name']} – 長多短空 (今晚忌盲目追多)")
     return c
 
-def analyze(sigs):
-    tech = cycle = index = 0
-    g = {}
-    for s in sigs:
-        if s['ind'] != 'DIF':
-            continue
-        clean_dir = '頂' if '頂' in s['dir'] else '底'
-        g.setdefault((s['ticker'], clean_dir), []).append(s)
-        
-    for (t, d), its in g.items():
-        best = max(its, key=lambda x: {'M': 4, 'W': 3, 'D': 2, '4H': 1}[x['level']])
-        w = {'M': best.get('weight', 1), 'W': 2, 'D': 1, '4H': 0.5}[best['level']]
-        if best['index'] == 'NDX':
-            tech += w
-        elif best['index'] == 'SPX':
-            cycle += w
-        if best['index'] in ['SPX', 'NDX', 'DJI']:
-            index += w
-            
-    risk = int(tech + cycle + index)
-    if risk >= 13:
-        rating = '末日級別'
-        ops = ['清倉', '做空 ES/NQ', '買入國債、黃金']
-    elif risk >= 8:
-        rating = '系統風險'
-        ops = ['科技股減倉', 'SMH止損']
-    elif risk >= 5:
-        rating = '高風險'
-        ops = ['控制倉位']
+def generate_0dte_actionable_advice(sigs, conflicts):
+    """專門為 0DTE 生成今晚開盤行動建議"""
+    nq_sigs = [s for s in sigs if s['ticker'] in ['NQ=F', 'QQQ', 'SMH']]
+    nq_4h_top = [s for s in nq_sigs if s['level'] == '4H' and s['dir'] == '頂']
+    nq_4h_bot = [s for s in nq_sigs if s['level'] == '4H' and s['dir'] == '底']
+    
+    macro_top = [s for s in sigs if s['level'] in ['W', 'M'] and s['dir'] == '頂' and s['ticker'] in ['NQ=F', 'ES=F']]
+    macro_bot = [s for s in sigs if s['level'] in ['W', 'M'] and s['dir'] == '底' and s['ticker'] in ['NQ=F', 'ES=F']]
+    
+    advice = []
+    if conflicts:
+        advice.append("⚠️ 【今晚戰術】：長短週期打架！末期權兩邊洗盤風險高，建議縮減注碼 50%。")
+    elif nq_4h_top:
+        advice.append("🎯 【今晚戰術】：NQ/QQQ/SMH 出現 4H 頂背離！今晚開盤拉高無力可尋找 Put 機會 (嚴禁追 Call)。")
+    elif nq_4h_bot:
+        advice.append("🎯 【今晚戰術】：NQ/QQQ/SMH 出現 4H 底背離！今晚開盤急跌可尋找 Call 爆發點 (嚴禁追 Put)。")
     else:
-        rating = '震盪市'
-        ops = ['維持現有倉位']
+        advice.append("🟢 【今晚戰術】：4H 無直接轉折訊號，順著日線/週線大局方向操作。")
         
-    trig = [s['ticker'] for s in sigs if s['ind'] == 'DIF' and s['index'] in ['SPX', 'NDX', 'DJI']]
-    trig = [ALL[t]['name'] for t in list(dict.fromkeys(trig))[:9]]
-    return risk, int(tech), int(cycle), int(index), rating, ops, trig
+    if macro_top:
+        advice.append("🏛️ 【大局背景】：週/月線處於大頂背離中！今晚若做 Put 爆發力極大，勝率與盈虧比偏高。")
+    elif macro_bot:
+        advice.append("🏛️ 【大局背景】：週/月線處於大底背離中！大盤中線有強支撐，跌穿多為假突破。")
+        
+    return advice
 
-def build_text(r, te, cy, ix, ra, op, tr, mg, cf):
+def build_text(r, te, cy, ix, ra, op, tr, mg, cf, sigs):
     now = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L = [f"Radar V15.23 背離雷達 | {now} HKT", "="*50, f"風險評級 : {ra}", f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})", "", ""]
-    for o in op:
-        L.append(f"- {o}")
-    L.append("")
-    L.append(f"({len(tr)}個)")
-    L.append(", ".join(tr))
+    advice = generate_0dte_actionable_advice(sigs, cf)
+    
+    L = [f"⚡ Radar V15.24 0DTE 早報 | {now} HKT", "="*50]
+    L += advice
+    L += ["="*50, f"整體風險評級 : {ra} (分數:{r} | 科技{te} / 週期{cy} / 指數{ix})", ""]
+    
     if cf:
-        L.append("")
-        L.append("長短週期打架")
+        L.append("⚔️ 長短週期衝突警告：")
         L += cf
-    L.append("="*50)
+        L.append("")
+
+    # 優先排列 QQQ / NQ / SMH 訊號
+    tech_core = [m for m in mg if m['ticker'] in ['NQ=F', 'QQQ', 'SMH']]
+    others = [m for m in mg if m['ticker'] not in ['NQ=F', 'QQQ', 'SMH']]
     
-    mw = [m for m in mg if 'M' in m['levels'] or 'W' in m['levels']]
-    d = [m for m in mg if 'D' in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]
-    h = [m for m in mg if '4H' in m['levels'] and 'D' not in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]
-    
-    for m in sorted(mw, key=lambda x: x['weight'], reverse=True):
+    if tech_core:
+        L.append("🔥 【QQQ / NQ / 半導體 核心警報】")
+        for m in tech_core:
+            L.append(m['display'])
+        L.append("-" * 50)
+        
+    L.append("📊 【其他板塊與指數訊號】")
+    for m in sorted(others, key=lambda x: x['weight'], reverse=True):
         L.append(m['display'])
-    if d:
-        L += ["", "-"*50, ""] + [m['display'] for m in sorted(d, key=lambda x: x['weight'], reverse=True)]
-    if h:
-        L += ["", "-"*50, ""] + [m['display'] for m in sorted(h, key=lambda x: x['weight'], reverse=True)]
         
     L.append("")
     L.append("="*50)
@@ -297,9 +260,9 @@ def save_csv(mg, ns):
     return p
 
 def send_email(sub, body, csv_file=None, merged=[]):
-    text_html = f'<div style="text-align:center;font-family:Consolas,monospace;white-space:pre-wrap;line-height:1.6;">{body}</div>'
+    text_html = f'<div style="text-align:left;font-family:Consolas,monospace;white-space:pre-wrap;line-height:1.6;font-size:14px;background:#f9f9f9;padding:15px;border-radius:8px;">{body}</div>'
     rows = ''.join([f"<tr><td>{m['ticker']}</td><td>{m['name']}</td><td>{m['levels']}</td><td>{m['dir']}</td><td>{m['inds']}</td><td>{m['category']}</td></tr>" for m in merged])
-    table_html = f"""<div style="text-align:center;margin-top:30px;"><table style="margin:auto;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;"><tr style="background:#2c3e50;color:white;"><th>Ticker</th><th>名稱</th><th>時段</th><th>方向</th><th>指標</th><th>類別</th></tr>{rows}</table></div>"""
+    table_html = f"""<div style="text-align:center;margin-top:25px;"><table style="margin:auto;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;width:90%;"><tr style="background:#1a252f;color:white;"><th>Ticker</th><th>名稱</th><th>時段</th><th>方向</th><th>指標</th><th>類別</th></tr>{rows}</table></div>"""
     
     msg = MIMEMultipart('mixed')
     msg['Subject'] = sub
@@ -307,7 +270,6 @@ def send_email(sub, body, csv_file=None, merged=[]):
     msg['To'] = EMAIL_CONFIG['receiver_email']
     msg.attach(MIMEText(text_html + table_html, 'html', 'utf-8'))
     
-    # 安全附加 CSV，避開以 .py 為附件導至 Gmail 退封
     if csv_file and os.path.exists(csv_file) and csv_file.endswith('.csv'):
         with open(csv_file, 'rb') as f:
             att = MIMEApplication(f.read(), _subtype='csv')
@@ -328,21 +290,57 @@ def main():
             
         mg = merge_signals(sigs)
         cf = detect_conflicts(sigs)
-        r, te, cy, ix, ra, op, tr = analyze(sigs)
+        r, te, cy, ix, ra, op, tr = analyze_0dte(sigs) # 使用 0DTE 導向評估
         
-        body = build_text(r, te, cy, ix, ra, op, tr, mg, cf)
+        body = build_text(r, te, cy, ix, ra, op, tr, mg, cf, sigs)
         ns = datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv_path = save_csv(mg, ns)
         
-        send_email(f"[Radar V15.23] Risk{r} {ra} - {ns[:8]}", body, csv_path, mg)
-        print("✅ V15.23 已成功執行並發送郵件 (靈敏雙軌背離版)")
+        # 標題直接顯示今晚重點，方便在手機通知欄一眼看懂
+        tech_4h = [s for s in sigs if s['ticker'] in ['NQ=F', 'QQQ', 'SMH'] and s['level'] == '4H']
+        status_tag = f"[{tech_4h[0]['ticker']} {tech_4h[0]['level']}{tech_4h[0]['dir']}背離]" if tech_4h else f"[{ra}]"
+        
+        send_email(f"⚡ [0DTE 雷達 09:00] {status_tag} Risk{r} - {ns[:8]}", body, csv_path, mg)
+        print("✅ V15.24 0DTE 晨報已成功發送 (09:00 HKT 專用)")
     except Exception as e:
         print(f"❌ 執行失敗: {e}")
         traceback.print_exc()
         try:
-            send_email("[Radar] 腳本執行失敗報警", f"錯誤原因:\n{e}\n\n{traceback.format_exc()}", None, [])
-        except Exception as mail_err:
-            print(f"❌ 失敗郵件亦無法發送: {mail_err}")
+            send_email("[Radar] 腳本執行失敗", f"錯誤詳情:\n{e}\n\n{traceback.format_exc()}", None, [])
+        except:
+            pass
+
+def analyze_0dte(sigs):
+    tech = cycle = index = 0
+    g = {}
+    for s in sigs:
+        if s['ind'] != 'DIF':
+            continue
+        g.setdefault((s['ticker'], s['dir']), []).append(s)
+        
+    for (t, d), its in g.items():
+        best = max(its, key=lambda x: {'M': 4, 'W': 3, 'D': 2, '4H': 1}[x['level']])
+        w = {'M': best.get('weight', 1), 'W': 2, 'D': 1, '4H': 0.5}[best['level']]
+        if best['index'] == 'NDX':
+            tech += w
+        elif best['index'] == 'SPX':
+            cycle += w
+        if best['index'] in ['SPX', 'NDX', 'DJI']:
+            index += w
+            
+    risk = int(tech + cycle + index)
+    if risk >= 12:
+        rating = '極高轉折風險'
+    elif risk >= 7:
+        rating = '中高轉折風險'
+    elif risk >= 4:
+        rating = '溫和波動'
+    else:
+        rating = '趨勢延續/震盪'
+        
+    ops = []
+    trig = []
+    return risk, int(tech), int(cycle), int(index), rating, ops, trig
 
 if __name__ == '__main__':
     main()
