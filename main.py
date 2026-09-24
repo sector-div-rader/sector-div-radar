@@ -1,8 +1,7 @@
 import yfinance as yf, os, pandas as pd, requests
 from datetime import datetime
 
-# ===== V10.4 LIST版 =====
-# 背離計LIST價，爆量計ETF量，Ntfy出LIST + 中文
+# ===== V10.4 LIST版 (FIXED) =====
 SECTORS = {
     'LIST2025':  {'name':'石油天然氣', 'vol_etf':'XLE',  'sticker':'🛢️'},
     'LIST2008':  {'name':'銀行',       'vol_etf':'XLF',  'sticker':'🏦'},
@@ -51,7 +50,7 @@ def get_hist(ticker, period, interval):
 
 signals=[]; major=[]; minor=[]
 
-# 1. 板塊 LIST
+# 1. 板塊 LIST - 背離睇LIST，爆量睇ETF
 for list_code, info in SECTORS.items():
     try:
         df_d_p = get_hist(list_code, "1y", "1d")
@@ -67,7 +66,6 @@ for list_code, info in SECTORS.items():
         dist_50=round((close/high_50-1)*100,2)
         dist_200=round((close/high_200-1)*100,2)
 
-        # 爆量 -> 睇ETF
         vol_today=float(df_d_v['Volume'].iloc[-1]); vol_yest=float(df_d_v['Volume'].iloc[-2])
         if vol_today/vol_yest >= 2.0:
             major.append(f"🔥 {info['sticker']} {list_code} 爆量 - {info['name']} ({info['vol_etf']}放量) {dist_50}%離50日高")
@@ -100,7 +98,7 @@ for list_code, info in SECTORS.items():
     except Exception as e:
         print(f"skip {list_code} {e}")
 
-# 2. 期貨/美元
+# 2. 期貨/美元指數
 for fut_code, info in FUTURES.items():
     try:
         df_w = get_hist(fut_code, "2y", "1wk")
@@ -125,9 +123,14 @@ try:
     print(f"Supabase OK {len(signals)}")
 except Exception as e: print(e)
 
-# ntfy
+# ntfy - Title唔可以有中文，已經FIX
 all_msgs = major + [f"({m})" for m in minor]
 if all_msgs:
     message = f"雷達 V10.4 {datetime.now().strftime('%m-%d %H:%M')}\n\n" + "\n\n".join(all_msgs)
-    requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title":"Sector Radar V10.4 LIST版","Priority":"high"}, timeout=10)
+    requests.post(
+        "https://ntfy.sh/sector-radar-ivan117", 
+        data=message.encode('utf-8'), 
+        headers={"Title": "Sector Radar V10.4", "Priority":"high"},
+        timeout=10
+    )
     print("ntfy sent")
