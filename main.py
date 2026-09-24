@@ -1,4 +1,4 @@
-# radar_v14.6.py - V14.5邏輯保留，只改：刪PNG + HTML大表 + 錯誤通知
+# radar_v14.8.py - 只計最長週期 + 只計DIF分數，J僅顯示
 import yfinance as yf
 import os, csv, smtplib, traceback
 from datetime import datetime, timezone, timedelta
@@ -46,7 +46,6 @@ FUTURES = {
 }
 ALL = {**INDICES, **SECTORS, **FUTURES}
 
-# ===== V14.5 原裝 function，全部保留 =====
 def get_dif(df): return df['Close'].ewm(span=12,adjust=False).mean() - df['Close'].ewm(span=26,adjust=False).mean()
 def get_j(df):
     low9=df['Low'].rolling(9).min(); high9=df['High'].rolling(9).max()
@@ -66,29 +65,32 @@ def find_div(p,i):
         if p[l2]<p[l1] and i[l2]>i[l1]: return '底'
     return None
 
+# J照掃，但後面唔計分
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
     for lv,(itv,per) in [('M',('1mo','5y')),('W',('1wk','2y')),('D',('1d','1y')),('4H',('1h','3mo'))]:
         try:
             df=yf.Ticker(etf).history(period=per,interval=itv)
             if len(df)<50: continue
-            for n,f in [('DIF',get_dif),('J',get_j)]:
+            for n,f in [('DIF',get_dif),('J',get_j)]: # J照留
                 d=find_div(df['Close'],f(df))
                 if d: sigs.append({**info,'ticker':t,'level':lv,'dir':d,'ind':n})
         except: pass
     return sigs
 
+# 方案1：只保留最長週期 M>W>D>4H
 def merge_signals(sigs):
     g={}
     for s in sigs: g.setdefault((s['ticker'],s['dir']),[]).append(s)
     m=[]
     for (t,d),its in g.items():
-        info=its[0]; lv={}
-        for it in its: lv.setdefault(it['ind'],[]).append(it['level'])
-        for k in lv: lv[k]='+'.join(sorted(lv[k],key=lambda x:{'4H':1,'D':2,'W':3,'M':4}[x]))
-        all_lv=sorted(set(sum([v.split('+') for v in lv.values()],[])),key=lambda x:{'4H':1,'D':2,'W':3,'M':4}[x])
-        lv_str='+'.join(all_lv); ind='+'.join(sorted(lv.keys()))
-        emoji='🗓️' if 'M' in lv_str else '📅' if 'W' in lv_str else '⚠️' if 'D' in lv_str else '💾'
+        info=its[0]
+        # 只取最高級別時段
+        best=max(its,key=lambda x:{'M':4,'W':3,'D':2,'4H':1}[x['level']])
+        lv_str=best['level'];
+        # 合併指標名稱，方便對比DIF同J
+        ind='+'.join(sorted(set([i['ind'] for i in its if i['level']==lv_str])))
+        emoji='🗓️' if lv_str=='M' else '📅' if lv_str=='W' else '⚠️' if lv_str=='D' else '💾'
         cat='科技' if info['index']=='NDX' else '週期' if info['index']=='SPX' else '指數'
         m.append({'ticker':t,'name':info['name'],'levels':lv_str,'dir':d,'inds':ind,'weight':info.get('weight',1),'category':cat,'display':f"{emoji} {t} | {lv_str} {d}背離 [{ind}] | {info['name']}"})
     return m
@@ -100,33 +102,35 @@ def detect_conflicts(sigs):
     for t,its in b.items():
         lt=[i for i in its if i['level'] in ('M','W','D') and i['dir']=='頂']; lb=[i for i in its if i['level'] in ('M','W','D') and i['dir']=='底']
         ht=[i for i in its if i['level']=='4H' and i['dir']=='頂']; hb=[i for i in its if i['level']=='4H' and i['dir']=='底']
-        if lt and hb: lv='+'.join(sorted(set([i['level'] for i in lt]),key=lambda x:{'M':1,'W':2,'D':3}[x])); c.append(f"⚠️ {t} | {lv}頂背離 但 4H底背離 | {ALL[t]['name']} – 長空短多")
-        if lb and ht: lv='+'.join(sorted(set([i['level'] for i in lb]),key=lambda x:{'M':1,'W':2,'D':3}[x])); c.append(f"⚠️ {t} | {lv}底背離 但 4H頂背離 | {ALL[t]['name']} – 長多短空")
+        if lt and hb: lv=lt[0]['level']; c.append(f"⚠️ {t} | {lv}頂背離 但 4H底背離 | {ALL[t]['name']} – 長空短多")
+        if lb and ht: lv=lb[0]['level']; c.append(f"⚠️ {t} | {lv}底背離 但 4H頂背離 | {ALL[t]['name']} – 長多短空")
     return c
 
-def analyze(sigs):
+# 方案2：只計DIF分數，J完全不計分
+def analyze(mg):
     tech=cycle=index=0
-    for s in sigs:
-        w={'M':s.get('weight',1),'W':2,'D':1,'4H':0.5}[s['level']]
-        if s['index']=='NDX': tech+=w
-        elif s['index']=='SPX': cycle+=w
-        if s['index'] in ['SPX','NDX','DJI']: index+=w
+    for s in mg:
+        if 'DIF' not in s['inds']: continue # 冇DIF就唔計分，J不算
+        w={'M':s.get('weight',1),'W':2,'D':1,'4H':0.5}[s['levels']]
+        if s['category']=='科技': tech+=w
+        elif s['category']=='週期': cycle+=w
+        if s['category']=='指數': index+=w
     risk=int(tech+cycle+index)
     if risk>=13: rating='末日級別'; ops=['清倉','做空 ES/NQ','買入國債、黃金']
     elif risk>=8: rating='系統風險'; ops=['科技股減倉','SMH止損']
     elif risk>=5: rating='高風險'; ops=['控制倉位']
     else: rating='震盪市'; ops=['維持現有倉位']
-    trig=[ALL[t]['name'] for t in list({s['ticker'] for s in sigs if s['index'] in ['SPX','NDX','DJI']})[:9]]
+    trig=[s['name'] for s in mg if s['category']=='指數' and 'DIF' in s['inds']][:9]
     return risk,int(tech),int(cycle),int(index),rating,ops,trig
 
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L=[f"Radar V14.6 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    L=[f"Radar V14.8 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
     for o in op: L.append(f"- {o}")
     L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
     if cf: L.append(""); L.append("長短週期打架"); L+=cf
     L.append("="*50)
-    mw=[m for m in mg if 'M' in m['levels'] or 'W' in m['levels']]; d=[m for m in mg if 'D' in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]; h=[m for m in mg if '4H' in m['levels'] and 'D' not in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]
+    mw=[m for m in mg if m['levels']=='M' or m['levels']=='W']; d=[m for m in mg if m['levels']=='D']; h=[m for m in mg if m['levels']=='4H']
     for m in sorted(mw,key=lambda x:x['weight'],reverse=True): L.append(m['display'])
     if d: L+=["","-"*50,""]+[m['display'] for m in sorted(d,key=lambda x:x['weight'],reverse=True)]
     if h: L+=["","-"*50,""]+[m['display'] for m in sorted(h,key=lambda x:x['weight'],reverse=True)]
@@ -140,8 +144,6 @@ def save_csv(mg,ns):
         for m in mg: w.writerow([m['ticker'],m['name'],m['levels'],m['dir']+'背離',m['inds'],m['weight'],m['category']])
     return p
 
-# ===== 改1：刪走 save_image =====
-# ===== 改2：send_email 用HTML大表，不再插圖 =====
 def send_email(sub,body,csv,merged):
     text_html = f'<div style="text-align:center;font-family:Consolas,monospace;white-space:pre-wrap;line-height:1.6;">{body}</div>'
     rows = ''.join([f"<tr><td>{m['ticker']}</td><td>{m['name']}</td><td>{m['levels']}</td><td>{m['dir']}</td><td>{m['inds']}</td><td>{m['category']}</td></tr>" for m in merged])
@@ -151,16 +153,15 @@ def send_email(sub,body,csv,merged):
     with open(csv,'rb') as f: att=MIMEApplication(f.read(),_subtype='csv'); att.add_header('Content-Disposition','attachment',filename=os.path.basename(csv)); msg.attach(att)
     s=smtplib.SMTP(EMAIL_CONFIG['smtp_server'],EMAIL_CONFIG['smtp_port']); s.starttls(); s.login(EMAIL_CONFIG['sender_email'],EMAIL_CONFIG['sender_password']); s.send_message(msg); s.quit()
 
-# ===== 改3：main 加錯誤捕捉，刪走 png =====
 def main():
     try:
         sigs=[];
         for t,i in ALL.items(): sigs+=scan_asset(t,i)
-        mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
+        mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(mg) # 用mg計分
         body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
         csv=save_csv(mg,ns)
-        send_email(f"[Radar V14.6] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ 已發送，內文置中+HTML大表")
+        send_email(f"[Radar V14.8] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
+        print("✅ V14.8已發送，只計DIF+最長週期")
     except Exception as e:
         print(f"❌ 錯誤: {e}"); traceback.print_exc()
         try: send_email("[Radar] 執行失敗",str(e),__file__,[])
