@@ -1,4 +1,4 @@
-# radar_v15.5.py - 最終版：雙頂雙底邏輯+包最後K線
+# radar_v15.9.py - 統一3根間隔版
 import yfinance as yf
 import os, csv, smtplib, traceback
 import pandas as pd
@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from scipy.signal import find_peaks
 
 EMAIL_CONFIG = {
     'smtp_server': 'smtp.gmail.com',
@@ -58,40 +59,46 @@ def get_j(df):
     rsv=(df['Close']-low9)/(high9-low9)*100; k=rsv.ewm(com=2,adjust=False).mean(); d=k.ewm(com=2,adjust=False).mean()
     return 3*k-2*d
 
-# V15.5核心：雙頂雙底+包最後K線
-def find_div(p,i,lookback=60):
-    p=p.dropna().iloc[-lookback:].copy()
-    i=i.dropna().iloc[-lookback:].copy()
-    idx=p.index.intersection(i.index); p,i=p.loc[idx],i.loc[idx]
-    if len(p)<20: return None
+def find_div(p, i, lookback=100, distance=3):
+    p = p.dropna().iloc[-lookback:].copy()
+    i = i.dropna().iloc[-lookback:].copy()
+    idx = p.index.intersection(i.index)
+    p, i = p.loc[idx], i.loc[idx]
+    if len(p) < 20: return None
 
-    # 搵所有高低點，最後一根都計
-    highs = p[(p.shift(1) < p) & (p.shift(-1, fill_value=-np.inf) < p)]
-    lows = p[(p.shift(1) > p) & (p.shift(-1, fill_value=np.inf) > p)]
+    peaks, _ = find_peaks(p.values, distance=distance)
+    troughs, _ = find_peaks(-p.values, distance=distance)
 
-    # 頂背離：最近2個高點，價更高但DIF更低
-    if len(highs)>=2:
-        h1,h2=highs.index[-2],highs.index[-1]
-        if p[h2] > p[h1] and i[h2] < i[h1]:
+    if len(peaks) >= 2:
+        h1, h2 = peaks[-2], peaks[-1]
+        if p.iloc[h2] > p.iloc[h1] and i.iloc[h2] < i.iloc[h1]:
             return '頂'
-    # 底背離：最近2個低點，價更低但DIF更高
-    if len(lows)>=2:
-        l1,l2=lows.index[-2],lows.index[-1]
-        if p[l2] < p[l1] and i[l2] > i[l1]:
+
+    if len(troughs) >= 2:
+        l1, l2 = troughs[-2], troughs[-1]
+        if p.iloc[l2] < p.iloc[l1] and i.iloc[l2] > i.iloc[l1]:
             return '底'
     return None
 
-# M60月, W100週, D30日, 4H60根=60d
+# 全部統一distance=3
 def scan_asset(t,info):
     sigs=[]; etf=info.get('etf',t)
-    for lv,(itv,per,lb) in [('M',('1mo','5y',60)),('W',('1wk','3y',100)),('D',('1d','6mo',30)),('4H',('1h','60d',60))]:
+    config = [
+        ('M', ('1mo','5y',60), 3), # 月K：3個月=1浪
+        ('W', ('1wk','3y',100), 3), # 週K：3週=1浪
+        ('D', ('1d','6mo',30), 3), # 日K：3日=1浪，改咗
+        ('4H',('1h','60d',60), 3) # 4H：3根=12小時=1浪，改咗
+    ]
+    for lv,(itv,per,lb),dist in config:
         try:
             df=yf.Ticker(etf).history(period=per,interval=itv)
             if len(df)<50: continue
             for n,f in [('DIF',get_dif),('J',get_j)]:
-                d=find_div(df['Close'],f(df),lookback=lb)
+                d=find_div(df['Close'],f(df),lookback=lb,distance=dist)
                 if d: sigs.append({**info,'ticker':t,'level':lv,'dir':d,'ind':n})
-        except: pass
+        except Exception as e:
+            print(f"{t}-{lv}出錯: {e}")
+            pass
     return sigs
 
 def merge_signals(sigs):
@@ -143,7 +150,7 @@ def analyze(sigs):
 
 def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     now=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
-    L=[f"Radar V15.5 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
+    L=[f"Radar V15.9 背離雷達 | {now} HKT","="*50,f"風險評級 : {ra}",f"總分 : {r} (科技{te} / 週期{cy} / 指數{ix})","",""]
     for o in op: L.append(f"- {o}")
     L.append(""); L.append(f"({len(tr)}個)"); L.append(", ".join(tr))
     if cf: L.append(""); L.append("長短週期打架"); L+=cf
@@ -153,38 +160,4 @@ def build_text(r,te,cy,ix,ra,op,tr,mg,cf):
     h=[m for m in mg if '4H' in m['levels'] and 'D' not in m['levels'] and 'M' not in m['levels'] and 'W' not in m['levels']]
     for m in sorted(mw,key=lambda x:x['weight'],reverse=True): L.append(m['display'])
     if d: L+=["","-"*50,""]+[m['display'] for m in sorted(d,key=lambda x:x['weight'],reverse=True)]
-    if h: L+=["","-"*50,""]+[m['display'] for m in sorted(h,key=lambda x:x['weight'],reverse=True)]
-    L.append(""); L.append("="*50)
-    return "\n".join(L)
-
-def save_csv(mg,ns):
-    p=f"/tmp/radar_{ns}.csv"
-    with open(p,'w',newline='',encoding='utf-8-sig') as f:
-        w=csv.writer(f); w.writerow(['Ticker','名稱','時段','方向','指標','權重','類別'])
-        for m in mg: w.writerow([m['ticker'],m['name'],m['levels'],m['dir']+'背離',m['inds'],m['weight'],m['category']])
-    return p
-
-def send_email(sub,body,csv,merged):
-    text_html = f'<div style="text-align:center;font-family:Consolas,monospace;white-space:pre-wrap;line-height:1.6;">{body}</div>'
-    rows = ''.join([f"<tr><td>{m['ticker']}</td><td>{m['name']}</td><td>{m['levels']}</td><td>{m['dir']}</td><td>{m['inds']}</td><td>{m['category']}</td></tr>" for m in merged])
-    table_html = f"""<div style="text-align:center;margin-top:30px;"><table style="margin:auto;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;"><tr style="background:#2c3e50;color:white;"><th>Ticker</th><th>名稱</th><th>時段</th><th>方向</th><th>指標</th><th>類別</th></tr>{rows}</table></div>"""
-    msg=MIMEMultipart('mixed'); msg['Subject']=sub; msg['From']=EMAIL_CONFIG['sender_email']; msg['To']=EMAIL_CONFIG['receiver_email']
-    msg.attach(MIMEText(text_html+table_html,'html','utf-8'))
-    with open(csv,'rb') as f: att=MIMEApplication(f.read(),_subtype='csv'); att.add_header('Content-Disposition','attachment',filename=os.path.basename(csv)); msg.attach(att)
-    s=smtplib.SMTP(EMAIL_CONFIG['smtp_server'],EMAIL_CONFIG['smtp_port']); s.starttls(); s.login(EMAIL_CONFIG['sender_email'],EMAIL_CONFIG['sender_password']); s.send_message(msg); s.quit()
-
-def main():
-    try:
-        sigs=[];
-        for t,i in ALL.items(): sigs+=scan_asset(t,i)
-        mg=merge_signals(sigs); cf=detect_conflicts(sigs); r,te,cy,ix,ra,op,tr=analyze(sigs)
-        body=build_text(r,te,cy,ix,ra,op,tr,mg,cf); ns=datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M')
-        csv=save_csv(mg,ns)
-        send_email(f"[Radar V15.5] Risk{r} {ra} - {ns[:8]}",body,csv,mg)
-        print("✅ V15.5已發送，雙頂邏輯+包最後K線")
-    except Exception as e:
-        print(f"❌ 錯誤: {e}"); traceback.print_exc()
-        try: send_email("[Radar] 執行失敗",str(e),__file__,[])
-        except: pass
-
-if __name__=='__main__': main()
+    if
