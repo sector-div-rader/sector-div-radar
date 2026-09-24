@@ -1,15 +1,28 @@
-import yfinance as yf, os, pandas as pd, requests, feedparser
+import yfinance as yf, os, pandas as pd, requests
 from datetime import datetime
 
-ETFS = {'XLE':'能源','XLF':'金融','XLK':'科技','XLV':'醫療','XLI':'工業','XLP':'必需消費','XLY':'可選消費','XLB':'原材料','XLU':'公用','XLRE':'地產','XLC':'通訊'}
+# ===== V10.4 LIST版 =====
+# 背離計LIST價，爆量計ETF量，Ntfy出LIST + 中文
+SECTORS = {
+    'LIST2025':  {'name':'石油天然氣', 'vol_etf':'XLE',  'sticker':'🛢️'},
+    'LIST2008':  {'name':'銀行',       'vol_etf':'XLF',  'sticker':'🏦'},
+    'LIST2016':  {'name':'半導體設備', 'vol_etf':'SMH',  'sticker':'💾'},
+    'LIST2110':  {'name':'生物技術',   'vol_etf':'XLV',  'sticker':'🧬'},
+    'LIST2089':  {'name':'航太國防',   'vol_etf':'XLI',  'sticker':'✈️'},
+    'LIST2145':  {'name':'必需消費',   'vol_etf':'XLP',  'sticker':'🛒'},
+    'LIST2080':  {'name':'汽車及零件', 'vol_etf':'XLY',  'sticker':'🚗'},
+    'LIST2035':  {'name':'化工',       'vol_etf':'XLB',  'sticker':'🧪'},
+    'LIST2260':  {'name':'公用事業',   'vol_etf':'XLU',  'sticker':'💡'},
+    'LIST2250':  {'name':'地產信託',   'vol_etf':'XLRE', 'sticker':'🏠'},
+    'LIST2065':  {'name':'電信服務',   'vol_etf':'XLC',  'sticker':'📡'},
+    'LIST23925': {'name':'存儲概念',   'vol_etf':'XLK',  'sticker':'💿'},
+}
 
-def get_news(etf):
-    try:
-        url = f"https://news.google.com/rss/search?q={etf}+ETF&hl=en-US&gl=US&ceid=US:en"
-        feed = feedparser.parse(url)
-        if feed.entries: return feed.entries[0].title[:100], feed.entries[0].link
-    except: pass
-    return "", ""
+FUTURES = {
+    'GC=F':     {'name':'黃金期貨', 'sticker':'🥇'},
+    'DX-Y.NYB': {'name':'美元指數', 'sticker':'💵'},
+    'CL=F':     {'name':'石油期貨', 'sticker':'⛽'},
+}
 
 def get_dif(c): return c.ewm(span=5, adjust=False).mean() - c.ewm(span=26, adjust=False).mean()
 def get_kdj(df):
@@ -17,6 +30,7 @@ def get_kdj(df):
     rsv=(df['Close']-low)/(high-low)*100
     k=rsv.ewm(com=2, adjust=False).mean(); d=k.ewm(com=2, adjust=False).mean()
     return 3*k-2*d
+
 def find_div(p,i):
     if len(p)<30: return None
     p=p.iloc[-60:]; i=i.iloc[-60:]
@@ -29,60 +43,78 @@ def find_div(p,i):
     if curr_p<=trough_p*1.02 and curr_i>trough_i*1.03: return "底背離"
     return None
 
-signals=[]; major=[]; minor=[]
-for etf, name_cn in ETFS.items():
+def get_hist(ticker, period, interval):
     try:
-        t=yf.Ticker(etf)
-        df_d=t.history(period="1y", interval="1d", auto_adjust=True)
-        df_w=t.history(period="2y", interval="1wk", auto_adjust=True)
-        df_m=t.history(period="10y", interval="1mo", auto_adjust=True)
-        df_60m=t.history(period="3mo", interval="60m", auto_adjust=True)
-        if len(df_d)<210: continue
+        t_str = ticker if "." in ticker or "=" in ticker or "-" in ticker else f"{ticker}.US"
+        return yf.Ticker(t_str).history(period=period, interval=interval, auto_adjust=True)
+    except: return pd.DataFrame()
 
-        high_50=round(float(df_d['High'].iloc[-50:].max()),2)
-        high_200=round(float(df_d['High'].iloc[-200:].max()),2)
-        close=float(df_d['Close'].iloc[-1])
+signals=[]; major=[]; minor=[]
+
+# 1. 板塊 LIST
+for list_code, info in SECTORS.items():
+    try:
+        df_d_p = get_hist(list_code, "1y", "1d")
+        df_w_p = get_hist(list_code, "2y", "1wk")
+        df_m_p = get_hist(list_code, "10y", "1mo")
+        df_60m_p = get_hist(list_code, "3mo", "60m")
+        df_d_v = get_hist(info['vol_etf'], "1y", "1d")
+        if len(df_d_p)<210 or len(df_d_v)<2: continue
+
+        high_50=round(float(df_d_p['High'].iloc[-50:].max()),2)
+        high_200=round(float(df_d_p['High'].iloc[-200:].max()),2)
+        close=float(df_d_p['Close'].iloc[-1])
         dist_50=round((close/high_50-1)*100,2)
         dist_200=round((close/high_200-1)*100,2)
 
-        # 爆量
-        vol_today=float(df_d['Volume'].iloc[-1]); vol_yest=float(df_d['Volume'].iloc[-2])
+        # 爆量 -> 睇ETF
+        vol_today=float(df_d_v['Volume'].iloc[-1]); vol_yest=float(df_d_v['Volume'].iloc[-2])
         if vol_today/vol_yest >= 2.0:
-            major.append(f"🔥 {etf} 爆量派貨 - {name_cn} {dist_50}%離50日高")
+            major.append(f"🔥 {info['sticker']} {list_code} 爆量 - {info['name']} ({info['vol_etf']}放量) {dist_50}%離50日高")
 
         sig="正常"
-        if len(df_m)>=30:
-            j=get_kdj(df_m).dropna()
+        if len(df_m_p)>=30:
+            j=get_kdj(df_m_p).dropna()
             if len(j)>=5:
-                div=find_div(df_m['Close'].loc[j.index], j)
+                div=find_div(df_m_p['Close'].loc[j.index], j)
                 if div:
                     j_now=float(j.iloc[-1]); j_prev=float(j.iloc[-2])
                     if ("頂" in div and j_now<j_prev) or ("底" in div and j_now>j_prev):
                         sig=f"月線{div}"
-                        major.append(f"🗓️ {etf} {sig} - {name_cn}見大{'頂' if '頂' in div else '底'} {dist_200}%離200日高")
+                        major.append(f"🗓️ {info['sticker']} {list_code} {sig} - {info['name']}見大{'頂' if '頂' in div else '底'} {dist_200}%離200日高")
 
-        if len(df_w)>=60:
-            div=find_div(df_w['Close'], get_dif(df_w['Close']))
+        if len(df_w_p)>=60:
+            div=find_div(df_w_p['Close'], get_dif(df_w_p['Close']))
             if div:
-                sig=f"週線{div}" if sig=="正常" else sig
-                major.append(f"⚠️ {etf} 週線{div} - {name_cn}見{'頂' if '頂' in div else '底'} {dist_50}%離50日高")
+                if sig=="正常": sig=f"週線{div}"
+                major.append(f"⚠️ {info['sticker']} {list_code} 週線{div} - {info['name']}見{'頂' if '頂' in div else '底'} {dist_50}%離50日高")
 
-        if len(df_60m)>=60:
-            df_4h=df_60m.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
+        if len(df_60m_p)>=60:
+            df_4h=df_60m_p.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
             if len(df_4h)>=60:
                 div=find_div(df_4h['Close'], get_dif(df_4h['Close']))
                 if div:
-                    minor.append(f"{etf} 4H{div} - {name_cn} {dist_50}%離高")
+                    minor.append(f"{info['sticker']} {list_code} 4H{div} - {info['name']} {dist_50}%離高")
 
-        title, link = get_news(etf)
-        signals.append({
-            "etf":etf, "name_cn":name_cn,
-            "high_50d":high_50, "high_200d":high_200,
-            "dist_50d":dist_50, "dist_200d":dist_200,
-            "signal":sig, "news_title":title, "news_url":link
-        })
+        signals.append({"etf":list_code, "name_cn":info['name'], "high_50d":high_50, "high_200d":high_200, "dist_50d":dist_50, "dist_200d":dist_200, "signal":sig})
     except Exception as e:
-        print(f"skip {etf} {e}")
+        print(f"skip {list_code} {e}")
+
+# 2. 期貨/美元
+for fut_code, info in FUTURES.items():
+    try:
+        df_w = get_hist(fut_code, "2y", "1wk")
+        df_m = get_hist(fut_code, "10y", "1mo")
+        if len(df_m)>=30:
+            j=get_kdj(df_m).dropna()
+            if len(j)>=5:
+                div=find_div(df_m['Close'].loc[j.index], j)
+                if div: major.append(f"🗓️ {info['sticker']} {fut_code} 月線{div} - {info['name']}")
+        if len(df_w)>=60:
+            div=find_div(df_w['Close'], get_dif(df_w['Close']))
+            if div: major.append(f"⚠️ {info['sticker']} {fut_code} 週線{div} - {info['name']}")
+    except Exception as e:
+        print(f"skip {fut_code} {e}")
 
 # Supabase
 try:
@@ -93,9 +125,9 @@ try:
     print(f"Supabase OK {len(signals)}")
 except Exception as e: print(e)
 
-# ntfy - 返返V9.7格式：大級別 + (4H) 括號，有距離，冇現價
+# ntfy
 all_msgs = major + [f"({m})" for m in minor]
 if all_msgs:
-    message = f"雷達 V10.3 {datetime.now().strftime('%m-%d %H:%M')}\n\n" + "\n\n".join(all_msgs)
-    requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title":"Sector Radar V10.3","Priority":"high"}, timeout=10)
+    message = f"雷達 V10.4 {datetime.now().strftime('%m-%d %H:%M')}\n\n" + "\n\n".join(all_msgs)
+    requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'), headers={"Title":"Sector Radar V10.4 LIST版","Priority":"high"}, timeout=10)
     print("ntfy sent")
