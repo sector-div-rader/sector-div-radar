@@ -1,12 +1,24 @@
-# radar_v13_futures.py - 指數改用期貨：ES/NQ/YM
+# radar_v13.2_split_email.py - 末日級別三保險版
 import yfinance as yf
 import os
 import pandas as pd
 import requests
+import smtplib
+import time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 
-# ========== 指數改期貨，無延遲無除息 ==========
+# ========== Email設定 ==========
+EMAIL_CONFIG = {
+    'smtp_server': 'smtp.gmail.com', 
+    'smtp_port': 587,
+    'sender_email': os.environ.get('EMAIL_USER'),
+    'sender_password': os.environ.get('EMAIL_PASS'), # 16位應用程式密碼，唔要空格
+    'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
+}
+
 INDICES = {
     'ES=F': {'name':'標普500期貨', 'sticker':'📈', 'weight':5, 'index':'SPX', 'etf':'SPY'},
     'NQ=F': {'name':'納指100期貨', 'sticker':'📱', 'weight':5, 'index':'NDX', 'etf':'QQQ'},
@@ -96,7 +108,6 @@ def scan_asset(code, info, sb):
         if len(df_w)<60: return []
         print(f"掃描 {code} {info['name']}")
 
-        # 月線 - 用 J
         if len(df_m)>=30:
             j=get_kdj(df_m).dropna()
             if len(j)>=5:
@@ -107,14 +118,12 @@ def scan_asset(code, info, sb):
                                        'weight':info.get('weight',1), 'sticker':info['sticker'], 'name':info['name'],
                                        'index':info['index'], 'days':days, 'indicator':'J'})
 
-        # 週線 - 用 DIF
         div = find_div(df_w['Close'], get_dif(df_w['Close']))
         if div:
             days = get_div_days(sb, code, 'W', div)
             raw_signals.append({'ticker':code, 'level':'W', 'type':div, 'dir':'頂' if '頂' in div else '底',
                                'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'})
 
-        # 日線 - 用 DIF
         if len(df_d)>=60:
             div = find_div(df_d['Close'], get_dif(df_d['Close']))
             if div:
@@ -122,7 +131,6 @@ def scan_asset(code, info, sb):
                 raw_signals.append({'ticker':code, 'level':'D', 'type':div, 'dir':'頂' if '頂' in div else '底',
                                    'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'})
 
-        # 4H - 用 DIF
         if len(df_60m)>=60:
             df_4h=df_60m.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last'}).dropna()
             if len(df_4h)>=60:
@@ -213,6 +221,30 @@ def analyze_risk(all_signals):
 
     return total_score, tech_score, cycle_score, index_score, [s['ticker'] for s in month_tops], advice
 
+def send_email(subject, body):
+    """發Email，失敗唔影響主流程"""
+    if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
+        print("Email未配置，跳過")
+        return False
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_CONFIG['sender_email']
+        msg['To'] = EMAIL_CONFIG['receiver_email']
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
+        server.starttls()
+        server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
+        server.send_message(msg)
+        server.quit()
+        print(f"Email已發送到 {EMAIL_CONFIG['receiver_email']}")
+        return True
+    except Exception as e:
+        print(f"Email發送失敗: {e}")
+        return False
+
 def main():
     all_signals = []
     hk_tz = timezone(timedelta(hours=8))
@@ -222,7 +254,7 @@ def main():
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
 
-    print(f"=== Radar V13 Futures 開始 {now_str} ===")
+    print(f"=== Radar V13.2 Split+Email 開始 {now_str} ===")
 
     for ticker, info in {**INDICES, **SECTORS}.items():
         all_signals += scan_asset(ticker, info, sb)
@@ -239,9 +271,12 @@ def main():
         except Exception as e: print(f"Supabase error: {e}")
 
     if not all_signals:
-        message = f"Radar V13 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
+        message = f"Radar V13.2 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
         title = "Radar - No Signal"
         pri = "low"
+        requests.post("https://ntfy.sh/sector-radar-ivan117", data=message.encode('utf-8'),
+            headers={"Title": title.encode('utf-8'), "Priority": pri}, timeout=10)
+        send_email(title, message)
     else:
         risk_score, tech_score, cycle_score, index_score, risk_tickers, advice = analyze_risk(all_signals)
         final_msgs = merge_signals(all_signals)
@@ -261,24 +296,54 @@ def main():
             header.append(f"月線觸發：{', '.join(risk_names)}")
         header += advice
 
-        message = f"Radar V13 {now_str}\n\n" + "\n\n".join(header + [""] + final_msgs)
+        # ========== 分2條ntfy發送 ==========
+        # 第1條：末日總結，確保手機收到
+        summary_msg = f"Radar V13.2 {now_str}\n\n" + "\n\n".join(header)
         title = f"Risk{risk_score} T{tech_score}C{cycle_score}I{index_score}"
-        pri = "high" if risk_score >= 8 else "default"
+        pri = "max" if risk_score >= 13 else "high" if risk_score >= 8 else "default"
+        
+        try:
+            requests.post(
+                "https://ntfy.sh/sector-radar-ivan117",
+                data=summary_msg.encode('utf-8'),
+                headers={
+                    "Title": f"💀 {title}".encode('utf-8'),
+                    "Priority": pri,
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "Markdown": "yes",
+                },
+                timeout=10
+            )
+            print("第1條ntfy已發送：末日總結")
+        except Exception as e: 
+            print(f"ntfy1失敗: {e}")
 
-    print("\n" + message + "\n")
-    try:
-        requests.post(
-            "https://ntfy.sh/sector-radar-ivan117",
-            data=message.encode('utf-8'),
-            headers={
-                "Title": title.encode('utf-8'),
-                "Priority": pri,
-                "Content-Type": "text/plain; charset=utf-8",
-                "Markdown": "yes",
-            },
-            timeout=10
-        )
-    except: pass
+        time.sleep(2) # 等2秒，避免手機通知合併
+
+        # 第2條：詳細信號列表
+        detail_msg = f"信號明細 {now_str}\n\n" + "\n".join(final_msgs)
+        try:
+            requests.post(
+                "https://ntfy.sh/sector-radar-ivan117",
+                data=detail_msg.encode('utf-8'),
+                headers={
+                    "Title": f"📊 信號明細 Risk{risk_score}".encode('utf-8'),
+                    "Priority": "default",
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "Markdown": "yes",
+                },
+                timeout=10
+            )
+            print("第2條ntfy已發送：信號明細")
+        except Exception as e: 
+            print(f"ntfy2失敗: {e}")
+
+        # 第3保險：Email發完整版
+        full_message = summary_msg + "\n\n" + "="*30 + "\n\n" + detail_msg
+        email_subject = f"💀 {title} - {now_str}"
+        send_email(email_subject, full_message)
+
+    print("\n發送完成\n")
 
 if __name__ == "__main__":
     main()
