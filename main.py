@@ -1,4 +1,4 @@
-# radar_v12.2_index.py - 超長虛線分隔日線
+# radar_v13_futures.py - 指數改用期貨：ES/NQ/YM
 import yfinance as yf
 import os
 import pandas as pd
@@ -6,11 +6,11 @@ import requests
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 
-# ========== 指數權重最高，5分 ==========
+# ========== 指數改期貨，無延遲無除息 ==========
 INDICES = {
-    'SPY': {'name':'美股標普500', 'sticker':'📈', 'weight':5, 'index':'SPX'},
-    'QQQ': {'name':'美股納指100', 'sticker':'📱', 'weight':5, 'index':'NDX'},
-    'DIA': {'name':'美股道指', 'sticker':'🏛️', 'weight':3, 'index':'DJI'},
+    'ES=F': {'name':'標普500期貨', 'sticker':'📈', 'weight':5, 'index':'SPX', 'etf':'SPY'},
+    'NQ=F': {'name':'納指100期貨', 'sticker':'📱', 'weight':5, 'index':'NDX', 'etf':'QQQ'},
+    'YM=F': {'name':'道指期貨', 'sticker':'🏛️', 'weight':3, 'index':'DJI', 'etf':'DIA'},
 }
 
 SECTORS = {
@@ -142,15 +142,13 @@ def merge_signals(all_signals):
     
     final_msgs = []
     
-    # 1. 日線用超長虛線分隔
     if daily_signals:
         for s in daily_signals:
             icon = '📅'
             days_str = f" 第{s.get('days',1)}日"
             final_msgs.append(f"{icon} {s['sticker']} {s['ticker']} D{s['dir']}背離[DIF]{days_str} - {s['name']}")
-        final_msgs.append("――――――――――――――――――――――――――") # 改呢行，拉長虛線
+        final_msgs.append("――――――――――――――――――――――――――")
     
-    # 2. 其他週期合併
     grouped = {}
     for s in other_signals:
         key = (s['ticker'], s['dir'])
@@ -193,13 +191,13 @@ def analyze_risk(all_signals):
 
     advice = []
     if total_score >= 13 and index_score >= 5:
-        advice.append("大熊市實錘：2000/2007級別，現金為王，SPY/QQQ做空，6-12個月")
+        advice.append("大熊市實錘：2000/2007級別，現金為王，ES/NQ做空，6-12個月")
     elif total_score >= 8 and index_score >= 5:
-        advice.append("系統性風險：指數共振，SPY/QQQ減倉至30%，買VXX/TLT對沖")
+        advice.append("系統性風險：指數共振，ES/NQ減倉至30%，買VXX/TLT對沖")
     elif total_score >= 8 and tech_score >= 6:
-        advice.append("科技泡沫破裂：空QQQ/SMH，避開成長股")
+        advice.append("科技泡沫破裂：空NQ/SMH，避開成長股")
     elif total_score >= 8 and cycle_score >= 6:
-        advice.append("經濟衰退交易：空SPY+資源股，買長債TLT避險")
+        advice.append("經濟衰退交易：空ES+資源股，買長債TLT避險")
     elif total_score >= 5:
         advice.append("高風險區：減倉至50%，等日線共振再操作")
     elif len(month_bots) >= 2:
@@ -208,7 +206,7 @@ def analyze_risk(all_signals):
         advice.append("震盪市：控倉操作，無大趨勢")
 
     impacted = []
-    if index_score > 0: impacted.append("美股三大指數")
+    if index_score > 0: impacted.append("美股三大指數期貨")
     if cycle_score >= 4: impacted.append("週期股")
     if tech_score >= 4: impacted.append("科技股")
     advice.append(f"主要影響：{' + '.join(impacted) if impacted else '暫無'}")
@@ -224,7 +222,7 @@ def main():
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
 
-    print(f"=== Radar V12.2 Index 開始 {now_str} ===")
+    print(f"=== Radar V13 Futures 開始 {now_str} ===")
 
     for ticker, info in {**INDICES, **SECTORS}.items():
         all_signals += scan_asset(ticker, info, sb)
@@ -241,7 +239,7 @@ def main():
         except Exception as e: print(f"Supabase error: {e}")
 
     if not all_signals:
-        message = f"Radar V12.2 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
+        message = f"Radar V13 {now_str}\n\n今日無背離信號\n風險分數: 0/20"
         title = "Radar - No Signal"
         pri = "low"
     else:
@@ -263,7 +261,7 @@ def main():
             header.append(f"月線觸發：{', '.join(risk_names)}")
         header += advice
 
-        message = f"Radar V12.2 {now_str}\n\n" + "\n\n".join(header + [""] + final_msgs)
+        message = f"Radar V13 {now_str}\n\n" + "\n\n".join(header + [""] + final_msgs)
         title = f"Risk{risk_score} T{tech_score}C{cycle_score}I{index_score}"
         pri = "high" if risk_score >= 8 else "default"
 
