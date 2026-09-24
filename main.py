@@ -1,4 +1,4 @@
-# radar_v11_index.py - 大勢版：指數共振 + 背離天數 + 中文板塊名 + ntfy格式修復
+# radar_v11_index.py - 大勢版：標註 DIF/J 背離 + 中文板塊名
 import yfinance as yf
 import os
 import pandas as pd
@@ -76,7 +76,6 @@ def get_hist(ticker, period, interval):
     except: return pd.DataFrame()
 
 def get_div_days(sb, ticker, level, div_type):
-    """查 Supabase 睇背離第幾日"""
     try:
         res = sb.table("signals").select("created_at").eq("ticker",ticker).eq("level",level).eq("signal",div_type).order("created_at").limit(1).execute()
         if res.data:
@@ -96,7 +95,7 @@ def scan_asset(code, info, sb):
         if len(df_w)<60: return []
         print(f"掃描 {code} {info['name']}")
 
-        # 月線
+        # 月線 - 用 J
         if len(df_m)>=30:
             j=get_kdj(df_m).dropna()
             if len(j)>=5:
@@ -105,23 +104,23 @@ def scan_asset(code, info, sb):
                     days = get_div_days(sb, code, 'M', div)
                     raw_signals.append({'ticker':code, 'level':'M', 'type':div, 'dir':'頂' if '頂' in div else '底',
                                        'weight':info.get('weight',1), 'sticker':info['sticker'], 'name':info['name'],
-                                       'index':info['index'], 'days':days})
+                                       'index':info['index'], 'days':days, 'indicator':'J'}) # 標註 J
 
-        # 週線
+        # 週線 - 用 DIF
         div = find_div(df_w['Close'], get_dif(df_w['Close']))
         if div:
             days = get_div_days(sb, code, 'W', div)
             raw_signals.append({'ticker':code, 'level':'W', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                               'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days})
+                               'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'days':days, 'indicator':'DIF'}) # 標註 DIF
 
-        # 4H
+        # 4H - 用 DIF
         if len(df_60m)>=60:
             df_4h=df_60m.resample("4h").agg({'Open':'first','High':'max','Low':'min','Close':'last'}).dropna()
             if len(df_4h)>=60:
                 div = find_div(df_4h['Close'], get_dif(df_4h['Close']))
                 if div:
                     raw_signals.append({'ticker':code, 'level':'4H', 'type':div, 'dir':'頂' if '頂' in div else '底',
-                                       'sticker':info['sticker'], 'name':info['name'], 'index':info['index']})
+                                       'sticker':info['sticker'], 'name':info['name'], 'index':info['index'], 'indicator':'DIF'}) # 標註 DIF
 
     except Exception as e:
         print(f"skip {code} {e}")
@@ -147,13 +146,17 @@ def merge_signals(all_signals):
         weight = max([s.get('weight',1) for s in sigs if s['level']=='M'], default=0)
         days = max([s.get('days',1) for s in sigs if s['level']=='M'], default=1)
 
+        # 標註指標：月線用J，其他用DIF。如果有M就優先顯示J
+        indicators = list(set([s['indicator'] for s in sigs_sorted]))
+        indicator_str = '[J]' if 'J' in indicators else '[DIF]'
+
         level_str = '+'.join(levels)
         icon = '🗓️' if 'M' in levels else '⚠️'
         weight_str = f" [{weight}分]" if 'M' in levels and weight>0 else ""
         days_str = f" 第{days}日" if 'M' in levels else ""
         name_str = f" - {name}"
 
-        final_msgs.append(f"{icon} {sticker} {ticker} {level_str}{direction}背離{weight_str}{days_str}{name_str}")
+        final_msgs.append(f"{icon} {sticker} {ticker} {level_str}{direction}背離{indicator_str}{weight_str}{days_str}{name_str}")
 
     return final_msgs
 
@@ -167,7 +170,6 @@ def analyze_risk(all_signals):
     cycle_score = sum(s.get('weight',1) for s in month_tops if s['index']=='SPX')
     index_score = sum(s.get('weight',1) for s in index_tops)
 
-    # 大勢判斷
     advice = []
     if total_score >= 13 and index_score >= 5:
         advice.append("大熊市實錘：2000/2007級別，現金為王，SPY/QQQ做空，6-12個月")
@@ -197,7 +199,6 @@ def main():
     hk_tz = timezone(timedelta(hours=8))
     now_str = datetime.now(hk_tz).strftime('%m-%d %H:%M')
 
-    # Supabase 連線
     url = os.environ.get('SUPABASE_URL')
     key = os.environ.get('SUPABASE_KEY')
     sb = create_client(url, key) if url and key else None
@@ -209,7 +210,6 @@ def main():
     for ticker, info in FUTURES.items():
         all_signals += scan_asset(ticker, info, sb)
 
-    # 寫入 Supabase 記錄天數
     if sb:
         try:
             sb.table("signals").delete().neq("ticker","XXX").execute()
@@ -255,7 +255,7 @@ def main():
                 "Title": title.encode('utf-8'),
                 "Priority": pri,
                 "Content-Type": "text/plain; charset=utf-8",
-                "Markdown": "yes", # 重點：ntfy 用 markdown 模式保留換行同 emoji
+                "Markdown": "yes",
             },
             timeout=10
         )
