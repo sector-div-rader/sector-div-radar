@@ -1,4 +1,4 @@
-# main.py - NQ 0DTE 終極全功能晨報腳本 (包含黃金/石油/美債/美指 + 1m 均線帶監測版)
+# main.py - NQ 0DTE 終極全功能晨報腳本 (包含三大期指/黃金/石油/美債/美指 + 1m 均線帶監測版)
 import yfinance as yf
 import os, smtplib, traceback
 import pandas as pd
@@ -20,13 +20,14 @@ ALL_TARGETS = {
     # 核心期貨與指數
     'NQ=F':       {'name':'納指100期貨','sticker':'📱','weight':5,'category':'TECH'},
     'ES=F':       {'name':'標普500期貨','sticker':'📈','weight':4,'category':'INDEX'},
-    '^VIX':       {'name':'恐慌指數','sticker':'😱','weight':3,'category':'INDEX'},
+    'YM=F':       {'name':'道指期貨',  'sticker':'🏛️','weight':4,'category':'INDEX'},
+    '^VIX':       {'name':'恐慌指數',  'sticker':'😱','weight':3,'category':'INDEX'},
     
-    # 宏觀資產與大宗商品 (新增)
-    'GC=F':       {'name':'黃金期貨','sticker':'🥇','weight':3,'category':'MACRO'},
-    'CL=F':       {'name':'原油期貨','sticker':'🛢️','weight':3,'category':'MACRO'},
-    'DX-Y.NYB':   {'name':'美元指數','sticker':'💵','weight':3,'category':'MACRO'},
-    '^TNX':       {'name':'美債10年收益率','sticker':'🏛️','weight':3,'category':'MACRO'},
+    # 宏觀資產與大宗商品
+    'GC=F':       {'name':'黃金期貨',  'sticker':'🥇','weight':3,'category':'MACRO'},
+    'CL=F':       {'name':'原油期貨',  'sticker':'🛢️','weight':3,'category':'MACRO'},
+    'DX-Y.NYB':   {'name':'美元指數',  'sticker':'💵','weight':3,'category':'MACRO'},
+    '^TNX':       {'name':'美債10年收益率','sticker':'📊','weight':3,'category':'MACRO'},
     
     # 科技與科技衍生板塊
     'SMH':        {'name':'美股半導體(核心)','sticker':'💾','weight':4,'category':'TECH'},
@@ -223,6 +224,7 @@ def get_overnight_and_key_levels():
     try:
         nq = yf.Ticker('NQ=F').history(period='5d', interval='1d')
         es = yf.Ticker('ES=F').history(period='5d', interval='1d')
+        ym = yf.Ticker('YM=F').history(period='5d', interval='1d')
         vix = yf.Ticker('^VIX').history(period='5d', interval='1d')
         gc = yf.Ticker('GC=F').history(period='5d', interval='1d')
         cl = yf.Ticker('CL=F').history(period='5d', interval='1d')
@@ -231,6 +233,7 @@ def get_overnight_and_key_levels():
 
         nq_c, nq_p = nq['Close'].iloc[-1], nq['Close'].iloc[-2]
         es_c, es_p = es['Close'].iloc[-1], es['Close'].iloc[-2]
+        ym_c, ym_p = ym['Close'].iloc[-1], ym['Close'].iloc[-2]
         vix_c, vix_p = vix['Close'].iloc[-1], vix['Close'].iloc[-2]
         gc_c, gc_p = gc['Close'].iloc[-1], gc['Close'].iloc[-2]
         cl_c, cl_p = cl['Close'].iloc[-1], cl['Close'].iloc[-2]
@@ -239,6 +242,7 @@ def get_overnight_and_key_levels():
 
         nq_chg = ((nq_c - nq_p) / nq_p) * 100
         es_chg = ((es_c - es_p) / es_p) * 100
+        ym_chg = ((ym_c - ym_p) / ym_p) * 100
         vix_chg = ((vix_c - vix_p) / vix_p) * 100
         gc_chg = ((gc_c - gc_p) / gc_p) * 100
         cl_chg = ((cl_c - cl_p) / cl_p) * 100
@@ -247,7 +251,7 @@ def get_overnight_and_key_levels():
 
         header_lines = [
             f"🌐 隔夜與宏觀數據 (09:00 HKT):",
-            f"   * 指數: NQ: {nq_c:,.1f} ({nq_chg:+.2f}%) | ES: {es_c:,.1f} ({es_chg:+.2f}%) | VIX: {vix_c:.1f} ({vix_chg:+.2f}%)",
+            f"   * 指數: NQ: {nq_c:,.1f} ({nq_chg:+.2f}%) | ES: {es_c:,.1f} ({es_chg:+.2f}%) | YM: {ym_c:,.1f} ({ym_chg:+.2f}%) | VIX: {vix_c:.1f} ({vix_chg:+.2f}%)",
             f"   * 大宗: 黃金: ${gc_c:,.1f} ({gc_chg:+.2f}%) | 原油: ${cl_c:.2f} ({cl_chg:+.2f}%)",
             f"   * 宏觀: 美指: {dxy_c:.2f} ({dxy_chg:+.2f}%) | 10年美債: {tnx_c:.3f}% ({tnx_chg:+.2f}%)"
         ]
@@ -361,7 +365,7 @@ def process_and_group_signals(sigs):
         sorted_lvls = sorted(data['levels'], key=lambda x: level_order.get(x, 99))
         lvl_str = "+".join(sorted_lvls)
         
-        emoji = '🚨' if t in ['NQ=F', 'SMH', 'GC=F', 'CL=F', 'DX-Y.NYB', '^TNX'] else '⚠️'
+        emoji = '🚨' if t in ['NQ=F', 'ES=F', 'YM=F', 'SMH', 'GC=F', 'CL=F', 'DX-Y.NYB', '^TNX'] else '⚠️'
         line = f"{emoji} {t} | {lvl_str} {direction}背離 [{ind}] | {data['name']}"
         result_lines.append(line)
 
@@ -395,7 +399,7 @@ def build_email_body(sigs):
                "🏛️ 【大局背景】：大週期結構常態，順應日內 15s/1m 貼身動能即可。"
 
     L = [
-        f"⚡ Radar V15.29 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V15.30 0DTE 全宏觀晨報 | {now} HKT",
         "="*55,
         overnight_str,
         "="*55,
@@ -437,7 +441,7 @@ def main():
         body = build_email_body(sigs)
         
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 09:00] NQ 期貨與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 09:00] 三大期指與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(f"<pre style='font-family:Consolas,monospace;font-size:14px;background:#f8f9fa;padding:15px;'>{body}</pre>", 'html', 'utf-8'))
