@@ -1,4 +1,4 @@
-# main.py - NQ 0DTE 終極全功能晨報腳本 (雙重去重評分 + 3m 均線帶監測修正版)
+# main.py - NQ 0DTE 終極全功能晨報腳本 (雙重去重評分 + 1m 均線帶監測穩定版)
 import yfinance as yf
 import os, smtplib, traceback
 import pandas as pd
@@ -209,7 +209,7 @@ def get_today_calendar_events():
         "",
         "🛡️ 【0DTE 日曆風控鐵律】：",
         "   1. 重大數據發佈前 15 分鐘（如 20:15）：建議平掉所有 15s/1m 極短線 0DTE 頭寸，防範雙向插針殺 IV。",
-        "   2. 數據發佈後 15 分鐘（20:45 後）：待 3m EMA 700-1000 帶重新定型並出現方向突破，再順勢尋找進場點。"
+        "   2. 數據發佈後 15 分鐘（20:45 後）：待 1m EMA 700-1000 帶重新定型並出現方向突破，再順勢尋找進場點。"
     ])
     return "\n".join(lines)
 
@@ -251,22 +251,26 @@ def get_overnight_and_key_levels():
     except Exception as e:
         return "🌐 隔夜數據擷取失敗", "📍 Key Levels 計算失敗"
 
-# 修正後的 3m 圖監測函式 (解決 period 限制與筆數不足問題)
+# NQ 期貨 1 分鐘 (1m) 圖形態監測
 def get_nq_custom_chart_status():
     try:
-        # 使用 period='60d' (Yahoo Finance 對 3m 支持的最佳長度)
-        raw_df = yf.Ticker('NQ=F').history(period='60d', interval='3m')
+        ticker = yf.Ticker('NQ=F')
         
-        # 降至 200 筆即可開始計算 EMA700-1000 帶
-        if len(raw_df) < 200: 
-            return f"NQ 3m 數據不足 (僅獲取到 {len(raw_df)} 筆數據)"
+        # 抓取 5 天的 1m 數據 (約有 6,000-7,000 筆 K 線，完美支援 EMA 3500 計算)
+        raw_df = ticker.history(period='5d', interval='1m')
+
+        if raw_df.empty or len(raw_df) < 100: 
+            return "NQ 1m 數據獲取失敗 (Yahoo Finance API 暫時無回應)"
             
         calc_df = calculate_custom_indicators(raw_df)
         last = calc_df.iloc[-1]
         price = last['Close']
         
         ema700, ema1000, ema3500 = last['EMA700'], last['EMA1000'], last['EMA3500']
-        lines = ["🛡️ 【NQ 期貨 3m 圖 EMA 700-1000 帶 & 3500 形態監測】：", f"   * 現價 : {price:.1f}"]
+        lines = [
+            "🛡️ 【NQ 期貨 1m 圖 EMA 700-1000 帶 & 3500 形態監測】：", 
+            f"   * 現價 : {price:.1f}"
+        ]
         
         if not np.isnan(ema700) and not np.isnan(ema1000):
             band_top, band_bot = max(ema700, ema1000), min(ema700, ema1000)
@@ -274,34 +278,38 @@ def get_nq_custom_chart_status():
             band_width_pct = (band_width_pts / price) * 100
             
             if band_width_pct < 0.15:
-                inner_status = f"🚨 【3m 帶內極度黏合】 (帶寬僅 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
-                inner_hint = "3m 日內籌碼極度集中！今晚 1m/3m 突破容易爆發單邊強趨勢，0DTE 可適當讓利潤奔跑。"
+                inner_status = f"🚨 【1m 帶內極度黏合】 (帶寬僅 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
+                inner_hint = "1m 日內籌碼極度集中！今晚突破容易爆發單邊強趨勢，0DTE 可適當讓利潤奔跑。"
             elif band_width_pct > 0.60:
-                inner_status = f"⚠️ 【3m 帶內寬幅發散】 (帶寬達 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
-                inner_hint = "3m 動能充分發散中，留意 1m/3m 背離訊號，見好即收，防範帶內劇烈回歸。"
+                inner_status = f"⚠️ 【1m 帶內寬幅發散】 (帶寬達 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
+                inner_hint = "1m 動能充分發散中，留意背離訊號，見好即收，防範帶內劇烈回歸。"
             else:
-                inner_status = f"🟢 【3m 常態帶寬】 (帶寬 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
-                inner_hint = "帶寬處於常態，按 15s/1m/3m 貼身線與背離訊號正常操作。"
+                inner_status = f"🟢 【1m 常態帶寬】 (帶寬 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
+                inner_hint = "帶寬處於常態，按 15s/1m 貼身線與背離訊號正常操作。"
                 
-            lines.append(f"   * 📍 3m EMA 700-1000 帶範圍 : {band_bot:.1f} - {band_top:.1f}")
+            lines.append(f"   * 📍 1m EMA 700-1000 帶範圍 : {band_bot:.1f} - {band_top:.1f}")
             lines.append(f"     └─ 形態: {inner_status}")
             
             if not np.isnan(ema3500):
-                lines.append(f"   * 🏛️ 3m EMA 3500 鐵板位 : {ema3500:.1f}")
+                lines.append(f"   * 🏛️ 1m EMA 3500 鐵板位 : {ema3500:.1f}")
                 if ema3500 > band_top:
-                    cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (3m 級別長線壓制)"
+                    cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (1m 級別長線壓制)"
                 elif ema3500 < band_bot:
-                    cross_status = "🟢 【EMA 3500 在 700-1000 帶下方】 (3m 級別標準多頭)"
+                    cross_status = "🟢 【EMA 3500 在 700-1000 帶下方】 (1m 級別標準多頭)"
                 else:
-                    cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (3m 長短線籌碼交織，極易劇烈洗盤！)"
+                    cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (1m 長短線籌碼交織，極易劇烈洗盤！)"
                 lines.append(f"     └─ 穿越狀態: {cross_status}")
             else:
-                lines.append("   * 🏛️ 3m EMA 3500 : 數據累積不足 3500 條，暫不顯示")
+                lines.append("   * 🏛️ 1m EMA 3500 : 數據累積不足 3500 條，暫不顯示")
             
-            lines.extend(["   --------------------------------------------------", f"   🎯 實戰戰術指引：{inner_hint}"])
+            lines.extend([
+                "   --------------------------------------------------", 
+                f"   🎯 實戰戰術指引：{inner_hint}"
+            ])
+            
         return "\n".join(lines)
     except Exception as e:
-        return f"3m 均線帶形態監測失敗: {e}"
+        return f"1m 均線帶形態監測失敗: {e}"
 
 # ==================== 背離多週期整合顯示與打架檢測 ====================
 
@@ -359,7 +367,7 @@ def build_email_body(sigs):
     
     tactics = "🎯 【今晚戰術】：NQ/SMH 出現 4H 頂背離！今晚開盤拉高無力可尋找 Put 機會 (嚴禁追 Call)。" if nq_4h_top else \
               "🎯 【今晚戰術】：NQ/SMH 出現 4H 底背離！今晚開盤急跌砸盤可尋找 Call 機會。" if nq_4h_bot else \
-              "🟢 【今晚戰術】：無直接 4H 轉折訊號，結合 3m EMA 帶形態，開盤用 15s/1m/3m 貼身線尋找進場點。"
+              "🟢 【今晚戰術】：無直接 4H 轉折訊號，結合 1m EMA 帶形態，開盤用 15s/1m 貼身線尋找進場點。"
               
     macro_bg = "🏛️ 【大局背景】：週/月線處於大頂背離中！今晚若做 Put 爆發力極大，勝率與盈虧比偏高。" if big_top else \
                "🏛️ 【大局背景】：大週期結構常態，順應日內 15s/1m 貼身動能即可。"
