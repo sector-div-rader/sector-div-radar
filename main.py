@@ -1,4 +1,4 @@
-# main.py - NQ 0DTE 終極全功能晨報腳本 (雙重去重評分 + 1m 均線帶監測穩定版)
+# main.py - NQ 0DTE 終極全功能晨報腳本 (包含黃金/石油/美債/美指 + 1m 均線帶監測版)
 import yfinance as yf
 import os, smtplib, traceback
 import pandas as pd
@@ -15,26 +15,32 @@ EMAIL_CONFIG = {
     'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
 }
 
-# 剔除 QQQ，補齊 10 大行業板塊 ETF
+# 標的清單：涵蓋科技、指數、行業板塊、大宗商品與宏觀指標
 ALL_TARGETS = {
     # 核心期貨與指數
-    'NQ=F': {'name':'納指100期貨','sticker':'📱','weight':5,'category':'TECH'},
-    'ES=F': {'name':'標普500期貨','sticker':'📈','weight':4,'category':'INDEX'},
-    '^VIX': {'name':'恐慌指數','sticker':'😱','weight':3,'category':'INDEX'},
+    'NQ=F':       {'name':'納指100期貨','sticker':'📱','weight':5,'category':'TECH'},
+    'ES=F':       {'name':'標普500期貨','sticker':'📈','weight':4,'category':'INDEX'},
+    '^VIX':       {'name':'恐慌指數','sticker':'😱','weight':3,'category':'INDEX'},
+    
+    # 宏觀資產與大宗商品 (新增)
+    'GC=F':       {'name':'黃金期貨','sticker':'🥇','weight':3,'category':'MACRO'},
+    'CL=F':       {'name':'原油期貨','sticker':'🛢️','weight':3,'category':'MACRO'},
+    'DX-Y.NYB':   {'name':'美元指數','sticker':'💵','weight':3,'category':'MACRO'},
+    '^TNX':       {'name':'美債10年收益率','sticker':'🏛️','weight':3,'category':'MACRO'},
     
     # 科技與科技衍生板塊
-    'SMH':  {'name':'美股半導體(核心)','sticker':'💾','weight':4,'category':'TECH'},
-    'IGV':  {'name':'美股軟件服務','sticker':'💿','weight':3,'category':'TECH'},
-    'XLC':  {'name':'通訊服務ETF','sticker':'📡','weight':3,'category':'TECH'},
-    'XLY':  {'name':'非必需消費ETF','sticker':'🛍️','weight':3,'category':'CYCLICAL'},
+    'SMH':        {'name':'美股半導體(核心)','sticker':'💾','weight':4,'category':'TECH'},
+    'IGV':        {'name':'美股軟件服務','sticker':'💿','weight':3,'category':'TECH'},
+    'XLC':        {'name':'通訊服務ETF','sticker':'📡','weight':3,'category':'TECH'},
+    'XLY':        {'name':'非必需消費ETF','sticker':'🛍️','weight':3,'category':'CYCLICAL'},
     
     # 週期與防禦板塊
-    'XLF':  {'name':'金融板塊ETF','sticker':'🏦','weight':3,'category':'CYCLICAL'},
-    'XLE':  {'name':'能源板塊ETF','sticker':'🛢️','weight':3,'category':'CYCLICAL'},
-    'XLI':  {'name':'工業板塊ETF','sticker':'⚙️','weight':3,'category':'CYCLICAL'},
-    'XLV':  {'name':'醫療保健ETF','sticker':'🏥','weight':2,'category':'DEFENSIVE'},
-    'XLP':  {'name':'必需消費ETF','sticker':'🛒','weight':2,'category':'DEFENSIVE'},
-    'XLU':  {'name':'公用事業ETF','sticker':'⚡','weight':2,'category':'DEFENSIVE'},
+    'XLF':        {'name':'金融板塊ETF','sticker':'🏦','weight':3,'category':'CYCLICAL'},
+    'XLE':        {'name':'能源板塊ETF','sticker':'⚡','weight':3,'category':'CYCLICAL'},
+    'XLI':        {'name':'工業板塊ETF','sticker':'⚙️','weight':3,'category':'CYCLICAL'},
+    'XLV':        {'name':'醫療保健ETF','sticker':'🏥','weight':2,'category':'DEFENSIVE'},
+    'XLP':        {'name':'必需消費ETF','sticker':'🛒','weight':2,'category':'DEFENSIVE'},
+    'XLU':        {'name':'公用事業ETF','sticker':'💡','weight':2,'category':'DEFENSIVE'},
 }
 
 # ==================== 技術指標計算 ====================
@@ -169,19 +175,19 @@ def calculate_detailed_risk_score(sigs):
 
     total_score = round(tech_score + cyclical_score + defensive_score, 1)
 
-    if total_score >= 30:
+    if total_score >= 35:
         rating = "🚨🚨 極高轉折/變盤風險 (全市場多個大週期背離)"
-    elif total_score >= 18:
+    elif total_score >= 22:
         rating = "🚨 高轉折風險 (核心板塊大週期背離)"
-    elif total_score >= 10:
+    elif total_score >= 12:
         rating = "⚠️ 中度波動風險 (局部板塊背離)"
-    elif total_score >= 4:
+    elif total_score >= 5:
         rating = "🟢 低風險/偏趨勢 (個別標的背離)"
     else:
         rating = "🟢🟢 極低風險 (順勢運行)"
 
     breakdown = (f"總分: {total_score} | 科技權重: {round(tech_score, 1)} / "
-                 f"週期權重: {round(cyclical_score, 1)} / "
+                 f"週期與宏觀: {round(cyclical_score, 1)} / "
                  f"防禦權重: {round(defensive_score, 1)}")
 
     return rating, breakdown
@@ -218,16 +224,34 @@ def get_overnight_and_key_levels():
         nq = yf.Ticker('NQ=F').history(period='5d', interval='1d')
         es = yf.Ticker('ES=F').history(period='5d', interval='1d')
         vix = yf.Ticker('^VIX').history(period='5d', interval='1d')
-        
+        gc = yf.Ticker('GC=F').history(period='5d', interval='1d')
+        cl = yf.Ticker('CL=F').history(period='5d', interval='1d')
+        dxy = yf.Ticker('DX-Y.NYB').history(period='5d', interval='1d')
+        tnx = yf.Ticker('^TNX').history(period='5d', interval='1d')
+
         nq_c, nq_p = nq['Close'].iloc[-1], nq['Close'].iloc[-2]
         es_c, es_p = es['Close'].iloc[-1], es['Close'].iloc[-2]
         vix_c, vix_p = vix['Close'].iloc[-1], vix['Close'].iloc[-2]
+        gc_c, gc_p = gc['Close'].iloc[-1], gc['Close'].iloc[-2]
+        cl_c, cl_p = cl['Close'].iloc[-1], cl['Close'].iloc[-2]
+        dxy_c, dxy_p = dxy['Close'].iloc[-1], dxy['Close'].iloc[-2]
+        tnx_c, tnx_p = tnx['Close'].iloc[-1], tnx['Close'].iloc[-2]
 
         nq_chg = ((nq_c - nq_p) / nq_p) * 100
         es_chg = ((es_c - es_p) / es_p) * 100
         vix_chg = ((vix_c - vix_p) / vix_p) * 100
+        gc_chg = ((gc_c - gc_p) / gc_p) * 100
+        cl_chg = ((cl_c - cl_p) / cl_p) * 100
+        dxy_chg = ((dxy_c - dxy_p) / dxy_p) * 100
+        tnx_chg = ((tnx_c - tnx_p) / tnx_p) * 100
 
-        header = f"🌐 隔夜期貨 (09:00 HKT): NQ: {nq_c:,.1f} ({nq_chg:+.2f}%) | ES: {es_c:,.1f} ({es_chg:+.2f}%) | VIX: {vix_c:.1f} ({vix_chg:+.2f}%)"
+        header_lines = [
+            f"🌐 隔夜與宏觀數據 (09:00 HKT):",
+            f"   * 指數: NQ: {nq_c:,.1f} ({nq_chg:+.2f}%) | ES: {es_c:,.1f} ({es_chg:+.2f}%) | VIX: {vix_c:.1f} ({vix_chg:+.2f}%)",
+            f"   * 大宗: 黃金: ${gc_c:,.1f} ({gc_chg:+.2f}%) | 原油: ${cl_c:.2f} ({cl_chg:+.2f}%)",
+            f"   * 宏觀: 美指: {dxy_c:.2f} ({dxy_chg:+.2f}%) | 10年美債: {tnx_c:.3f}% ({tnx_chg:+.2f}%)"
+        ]
+        header = "\n".join(header_lines)
 
         high_p = nq['High'].iloc[-2]
         low_p = nq['Low'].iloc[-2]
@@ -249,14 +273,12 @@ def get_overnight_and_key_levels():
         ]
         return header, "\n".join(levels)
     except Exception as e:
-        return "🌐 隔夜數據擷取失敗", "📍 Key Levels 計算失敗"
+        return "🌐 隔夜與宏觀數據擷取失敗", "📍 Key Levels 計算失敗"
 
 # NQ 期貨 1 分鐘 (1m) 圖形態監測
 def get_nq_custom_chart_status():
     try:
         ticker = yf.Ticker('NQ=F')
-        
-        # 抓取 5 天的 1m 數據 (約有 6,000-7,000 筆 K 線，完美支援 EMA 3500 計算)
         raw_df = ticker.history(period='5d', interval='1m')
 
         if raw_df.empty or len(raw_df) < 100: 
@@ -339,7 +361,7 @@ def process_and_group_signals(sigs):
         sorted_lvls = sorted(data['levels'], key=lambda x: level_order.get(x, 99))
         lvl_str = "+".join(sorted_lvls)
         
-        emoji = '🚨' if t in ['NQ=F', 'SMH'] else '⚠️'
+        emoji = '🚨' if t in ['NQ=F', 'SMH', 'GC=F', 'CL=F', 'DX-Y.NYB', '^TNX'] else '⚠️'
         line = f"{emoji} {t} | {lvl_str} {direction}背離 [{ind}] | {data['name']}"
         result_lines.append(line)
 
@@ -373,7 +395,7 @@ def build_email_body(sigs):
                "🏛️ 【大局背景】：大週期結構常態，順應日內 15s/1m 貼身動能即可。"
 
     L = [
-        f"⚡ Radar V15.28 0DTE 早報 | {now} HKT",
+        f"⚡ Radar V15.29 0DTE 全宏觀晨報 | {now} HKT",
         "="*55,
         overnight_str,
         "="*55,
@@ -402,7 +424,7 @@ def build_email_body(sigs):
         for line in grouped_sig_lines:
             L.append(line)
     else:
-        L.append("🟢 各大板塊與指數目前暫無顯著背離訊號。")
+        L.append("🟢 各大板塊與宏觀資產目前暫無顯著背離訊號。")
 
     return "\n".join(L)
 
@@ -415,7 +437,7 @@ def main():
         body = build_email_body(sigs)
         
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 09:00] NQ 期貨與 10 大板塊戰術地圖 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 09:00] NQ 期貨與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(f"<pre style='font-family:Consolas,monospace;font-size:14px;background:#f8f9fa;padding:15px;'>{body}</pre>", 'html', 'utf-8'))
