@@ -1,4 +1,4 @@
-# main.py - NQ 0DTE 終極全功能晨報腳本 (雙重去重評分 + 3m 均線帶監測版)
+# main.py - NQ 0DTE 終極全功能晨報腳本 (雙重去重評分 + 3m 均線帶監測修正版)
 import yfinance as yf
 import os, smtplib, traceback
 import pandas as pd
@@ -46,8 +46,6 @@ def calculate_custom_indicators(df):
 
     ema50   = close.ewm(span=50, adjust=False).mean()
     ema700  = close.ewm(span=700, adjust=False).mean() if len(df) >= 700 else pd.Series(index=df.index)
-    ema800  = close.ewm(span=800, adjust=False).mean() if len(df) >= 800 else pd.Series(index=df.index)
-    ema900  = close.ewm(span=900, adjust=False).mean() if len(df) >= 900 else pd.Series(index=df.index)
     ema1000 = close.ewm(span=1000, adjust=False).mean() if len(df) >= 1000 else pd.Series(index=df.index)
     ema3500 = close.ewm(span=3500, adjust=False).mean() if len(df) >= 3500 else pd.Series(index=df.index)
 
@@ -67,8 +65,7 @@ def calculate_custom_indicators(df):
 
     return pd.DataFrame({
         'Close': close, 'High': high, 'Low': low, 'DIF': dif, 'J': j,
-        'EMA50': ema50, 'EMA700': ema700, 'EMA800': ema800,
-        'EMA900': ema900, 'EMA1000': ema1000, 'EMA3500': ema3500
+        'EMA50': ema50, 'EMA700': ema700, 'EMA1000': ema1000, 'EMA3500': ema3500
     })
 
 def pivothigh(series, n):
@@ -254,12 +251,15 @@ def get_overnight_and_key_levels():
     except Exception as e:
         return "🌐 隔夜數據擷取失敗", "📍 Key Levels 計算失敗"
 
-# 改為 3m 圖監測
+# 修正後的 3m 圖監測函式 (解決 period 限制與筆數不足問題)
 def get_nq_custom_chart_status():
     try:
-        # 改取 3m 數據 (抓取 14 天以確保足夠計算 EMA 3500)
-        raw_df = yf.Ticker('NQ=F').history(period='14d', interval='3m')
-        if len(raw_df) < 500: return "NQ 3m 數據不足"
+        # 使用 period='60d' (Yahoo Finance 對 3m 支持的最佳長度)
+        raw_df = yf.Ticker('NQ=F').history(period='60d', interval='3m')
+        
+        # 降至 200 筆即可開始計算 EMA700-1000 帶
+        if len(raw_df) < 200: 
+            return f"NQ 3m 數據不足 (僅獲取到 {len(raw_df)} 筆數據)"
             
         calc_df = calculate_custom_indicators(raw_df)
         last = calc_df.iloc[-1]
@@ -295,6 +295,8 @@ def get_nq_custom_chart_status():
                 else:
                     cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (3m 長短線籌碼交織，極易劇烈洗盤！)"
                 lines.append(f"     └─ 穿越狀態: {cross_status}")
+            else:
+                lines.append("   * 🏛️ 3m EMA 3500 : 數據累積不足 3500 條，暫不顯示")
             
             lines.extend(["   --------------------------------------------------", f"   🎯 實戰戰術指引：{inner_hint}"])
         return "\n".join(lines)
@@ -363,7 +365,7 @@ def build_email_body(sigs):
                "🏛️ 【大局背景】：大週期結構常態，順應日內 15s/1m 貼身動能即可。"
 
     L = [
-        f"⚡ Radar V15.27 0DTE 早報 | {now} HKT",
+        f"⚡ Radar V15.28 0DTE 早報 | {now} HKT",
         "="*55,
         overnight_str,
         "="*55,
