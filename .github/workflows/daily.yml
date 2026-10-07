@@ -2,40 +2,30 @@ name: daily-radar
 
 on:
   schedule:
-    - cron: '0 22 * * *' # 香港時間早上6點跑，UTC 22:00 = HKT 06:00
-  workflow_dispatch: # 允許手動觸發
+    - cron: '0 22 * * *'   # UTC 22:00 = HKT 06:00
+  workflow_dispatch:
+
+concurrency:
+  group: daily-radar
+  cancel-in-progress: false
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
+          cache: 'pip'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-        
-      - name: Run radar_v13.2
+
+      - name: Run main.py
         run: python main.py
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
-          PHONE: ${{ secrets.PHONE }}
-          APIKEY: ${{ secrets.APIKEY }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          
-      - name: 保存成績表+網站
-        run: |
-          git config user.name "radar-bot"
-          git config user.email "bot@bot.com"
-          git add history.csv index.html
-          git commit -m "update V13.2 ${{ github.run_number }}" || exit 0
-          git push
