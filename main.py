@@ -1,13 +1,10 @@
-# main.py - NQ 0DTE 全宏觀晨報 V17.0
+# main.py - NQ 0DTE 全宏觀晨報 V17.1
 # ============================================
-# 主要改動：
-#   1. 大勢（M/W）：舊 Pivot 邏輯 + 新雙重 Lookback 並存
-#   2. 今晚（D/4H）：只用新雙重 Lookback
-#   3. 雙重 Lookback：短 lookback + 長 lookback
-#   4. 標記：🔥短新高 / 🔥🔥長新高 / ⚡短雙頂 / ⚡⚡長雙頂
-#   5. 刪除風險評分
-#   6. Email 分區清晰 + 中文對照
-#   7. M/W 即時用「已收盤 K 線」
+# V17.1 改動（相對 V17.0）：
+#   1. 加過濾：只顯示「長」lookback，短訊號隱藏但有提示
+#   2. ind_drop_min: 3% → 5%
+#   3. price_tol: M=2% W=1.5% D=0.5% 4H=0.3%
+#   4. 修 KeyError: 'ticker'
 # ============================================
 
 import yfinance as yf
@@ -90,7 +87,6 @@ def scipy_pivots(series, prominence_pct=3.0, distance=2):
     return list(highs), list(lows)
 
 def check_pivot_divergence(p_s, i_s, highs, lows, last_idx, recent_window):
-    """Pivot-to-pivot 背離（舊邏輯）"""
     top_div = None
     bot_div = None
 
@@ -121,23 +117,20 @@ def check_pivot_divergence(p_s, i_s, highs, lows, last_idx, recent_window):
 # ==================== 新邏輯：雙重 Lookback ====================
 
 def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
-                        price_tol=0.01, ind_drop_min=0.03):
+                        price_tol=0.005, ind_drop_min=0.05):
     """
-    檢查最新一根 K 線：
-      - 短期（short_lb 根）+ 長期（long_lb 根）兩個 lookback
-      - 每個 lookback：價「接近」前高/前低 + 指標明顯跌/升
-      - 回傳 signals list
+    回傳：{'long': [...], 'short': [...]}
     """
     if len(price) < long_lb + 2:
-        return []
+        return {'long': [], 'short': []}
 
     last_idx = len(price) - 1
     p_now = float(price.iloc[last_idx])
     i_now = float(indicator.iloc[last_idx])
 
-    signals = []
+    result = {'long': [], 'short': []}
 
-    for label, lb in [('長', long_lb), ('短', short_lb)]:
+    for label, lb in [('long', long_lb), ('short', short_lb)]:
         if last_idx - lb < 0:
             continue
 
@@ -157,10 +150,9 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
 
             if price_close and ind_drop >= ind_drop_min:
                 is_new_high = p_now > prev_high_price
-                dist = last_idx - (last_idx - lb + prev_high_pos)
-                signals.append({
+                dist = lb - prev_high_pos
+                result[label].append({
                     'type': '頂',
-                    'label': label,
                     'tag': '新高' if is_new_high else '雙頂',
                     'current_price': p_now,
                     'prev_price': prev_high_price,
@@ -183,10 +175,9 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
 
             if price_close_low and ind_rise >= ind_drop_min:
                 is_new_low = p_now < prev_low_price
-                dist = last_idx - (last_idx - lb + prev_low_pos)
-                signals.append({
+                dist = lb - prev_low_pos
+                result[label].append({
                     'type': '底',
-                    'label': label,
                     'tag': '新低' if is_new_low else '雙底',
                     'current_price': p_now,
                     'prev_price': prev_low_price,
@@ -197,22 +188,20 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
                     'ind_diff_pct': ind_rise * 100
                 })
 
-    return signals
+    return result
 
 # ==================== 參數 ====================
 
-# 舊邏輯（只用 M/W）
 PIVOT_CONFIG = [
     ('M', '1mo', '5y',  60, {'prominence_pct': 5.0, 'distance': 2, 'recent_window': 3}),
     ('W', '1wk', '3y',  100, {'prominence_pct': 3.0, 'distance': 2, 'recent_window': 4}),
 ]
 
-# 新邏輯雙重 Lookback（所有週期）
 DUAL_LB_CONFIG = {
-    'M':  {'short': 3,  'long': 6,  'price_tol': 0.02,  'ind_drop': 0.03},
-    'W':  {'short': 4,  'long': 10, 'price_tol': 0.015, 'ind_drop': 0.03},
-    'D':  {'short': 5,  'long': 20, 'price_tol': 0.01,  'ind_drop': 0.03},
-    '4H': {'short': 5,  'long': 20, 'price_tol': 0.005, 'ind_drop': 0.03},
+    'M':  {'short': 3,  'long': 6,  'price_tol': 0.02,  'ind_drop': 0.05},
+    'W':  {'short': 4,  'long': 10, 'price_tol': 0.015, 'ind_drop': 0.05},
+    'D':  {'short': 5,  'long': 20, 'price_tol': 0.005, 'ind_drop': 0.05},
+    '4H': {'short': 5,  'long': 20, 'price_tol': 0.003, 'ind_drop': 0.05},
 }
 
 INTERVAL_MAP = {
@@ -235,7 +224,6 @@ def get_raw_df(t, lv):
     return raw
 
 def scan_pivot(t, info, lv, params):
-    """舊邏輯：Pivot-to-pivot（只用 M/W）"""
     results = []
     try:
         raw_df = get_raw_df(t, lv)
@@ -248,12 +236,10 @@ def scan_pivot(t, info, lv, params):
                                     distance=params['distance'])
         rw = params['recent_window']
 
-        # DIF 背離
         d = check_pivot_divergence(p_s, calc_df['DIF'], highs, lows, last_idx, rw)
         if d:
             results.append({'ind': 'DIF', 'dir': d[0], 'dist': d[1]})
 
-        # J 背離
         d = check_pivot_divergence(p_s, calc_df['J'], highs, lows, last_idx, rw)
         if d:
             curr_j = float(calc_df['J'].iloc[-1])
@@ -264,14 +250,12 @@ def scan_pivot(t, info, lv, params):
     return results
 
 def scan_dual_lookback(t, info, lv):
-    """新邏輯：雙重 Lookback（所有週期）"""
     results = []
     try:
         raw_df = get_raw_df(t, lv)
         if len(raw_df) < 40:
             return results
 
-        # M/W：只用已收盤 K（去掉最新一根）
         if lv in ['M', 'W']:
             raw_df = raw_df.iloc[:-1]
 
@@ -282,23 +266,18 @@ def scan_dual_lookback(t, info, lv):
         p_s = calc_df['Close']
         params = DUAL_LB_CONFIG[lv]
 
-        # DIF
-        for sig in check_dual_lookback(
-            p_s, calc_df['DIF'],
-            short_lb=params['short'], long_lb=params['long'],
-            price_tol=params['price_tol'], ind_drop_min=params['ind_drop']
-        ):
-            sig['ind'] = 'DIF'
-            results.append(sig)
-
-        # J
-        for sig in check_dual_lookback(
-            p_s, calc_df['J'],
-            short_lb=params['short'], long_lb=params['long'],
-            price_tol=params['price_tol'], ind_drop_min=params['ind_drop']
-        ):
-            sig['ind'] = 'J'
-            results.append(sig)
+        for ind_name in ['DIF', 'J']:
+            r = check_dual_lookback(
+                p_s, calc_df[ind_name],
+                short_lb=params['short'], long_lb=params['long'],
+                price_tol=params['price_tol'], ind_drop_min=params['ind_drop']
+            )
+            for sig in r['long']:
+                sig['ind'] = ind_name; sig['lookback'] = 'long'
+                results.append(sig)
+            for sig in r['short']:
+                sig['ind'] = ind_name; sig['lookback'] = 'short'
+                results.append(sig)
 
     except Exception as e:
         print(f"[scan_dual_lookback] {t} {lv}: {e}")
@@ -416,20 +395,12 @@ def get_nq_custom_chart_status():
 # ==================== 格式化 ====================
 
 def fmt_pivot_signal(info, lv, sig):
-    """舊 Pivot 邏輯單行"""
     dist = sig['dist']
     unit = {'M': '個月', 'W': '週'}.get(lv, '根')
     tag = '最新' if dist == 0 else f'{dist}{unit}前'
-    return f"{info['sticker']} {info['name']} ({sig['ticker']}) | {lv} {sig['dir']}背離 [{sig['ind']}] ({tag})"
-
-def fmt_dual_signal_header(info, lv, signals):
-    """新邏輯標題行"""
-    direction = signals[0]['type']
-    current_price = signals[0]['current_price']
-    return f"🚨 {info['name']} ({info['ticker']}) | {lv} {direction}背離 (現價 {current_price:,.2f})"
+    return f"{info['sticker']} {info['name']} ({info['ticker']}) | {lv} {sig['dir']}背離 [{sig['ind']}] ({tag})"
 
 def fmt_dual_signal_body(sig):
-    """新邏輯細節行"""
     icon = '🔥🔥' if sig['label'] == '長' else '🔥'
     if sig['tag'] in ['雙頂', '雙底']:
         icon = '⚡⚡' if sig['label'] == '長' else '⚡'
@@ -447,9 +418,49 @@ def fmt_dual_signal_body(sig):
         f"        價: {sig['price_diff_pct']:+.2f}% / {ind_name}: {sig['ind_diff_pct']:+.2f}%"
     )
 
+# ==================== 分組 ====================
+
+def group_dual_by_ticker_lv(signals):
+    """將新邏輯訊號按 (ticker, level, type) 分組"""
+    groups = {}
+    for s in signals:
+        key = (s['ticker'], s['level'], s['type'])
+        groups.setdefault(key, []).append(s)
+
+    blocks = []
+    for (ticker, lv, direction), sigs in groups.items():
+        info = ALL_TARGETS[ticker].copy()
+        info['ticker'] = ticker
+
+        long_sigs = [s for s in sigs if s.get('lookback') == 'long']
+        short_sigs = [s for s in sigs if s.get('lookback') == 'short']
+
+        if long_sigs:
+            display_sigs = long_sigs
+            has_hidden_short = len(short_sigs) > 0
+        elif short_sigs:
+            display_sigs = short_sigs
+            has_hidden_short = False
+        else:
+            continue
+
+        display_sigs = sorted(display_sigs, key=lambda x: (0 if x['ind'] == 'DIF' else 1))
+
+        current_price = display_sigs[0]['current_price']
+        header = f"🚨 {info['name']} ({ticker}) | {lv} {direction}背離 (現價 {current_price:,.2f})"
+
+        body_lines = [fmt_dual_signal_body(s) for s in display_sigs]
+
+        if has_hidden_short:
+            body_lines.append("   ⚡ 另有短訊號（未顯示）")
+
+        blocks.append(header + "\n" + "\n".join(body_lines))
+
+    return blocks
+
 # ==================== Email 組裝 ====================
 
-def build_email_body(pivot_sigs, dual_sigs, dual_sigs_mw):
+def build_email_body(pivot_sigs, dual_sigs_dh, dual_mw_blocks):
     now = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
     overnight_str, levels_str = get_overnight_and_key_levels()
     nq_status = get_nq_custom_chart_status()
@@ -457,9 +468,8 @@ def build_email_body(pivot_sigs, dual_sigs, dual_sigs_mw):
 
     sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    # ---- 今晚戰術 ----
-    tech_4h_top = [s for s in dual_sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '頂']
-    tech_4h_bot = [s for s in dual_sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '底']
+    tech_4h_top = [s for s in dual_sigs_dh if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '頂']
+    tech_4h_bot = [s for s in dual_sigs_dh if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '底']
 
     if tech_4h_top:
         tactics = "🎯 今晚戰術：科技板塊 4H 頂背離！開盤拉高無力可搵 Put (嚴禁追 Call)。"
@@ -468,35 +478,26 @@ def build_email_body(pivot_sigs, dual_sigs, dual_sigs_mw):
     else:
         tactics = "🟢 今晚戰術：無 4H 轉折訊號，結合 5m EMA 帶形態即市操作。"
 
-    # ---- 大勢背景 ----
     big_top = [s for s in pivot_sigs if s['level'] in ['M', 'W'] and s['dir'] == '頂']
     macro_bg = "🏛️ 大勢背景：週/月線大頂背離中！做 Put 爆發力大。" if big_top else \
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V17.0 0DTE 全宏觀晨報 | {now} HKT",
-        sep,
-        "🏛️ 大勢背景（月 / 週線）",
-        sep,
+        f"⚡ Radar V17.1 0DTE 全宏觀晨報 | {now} HKT",
+        sep, "🏛️ 大勢背景（月 / 週線）", sep,
+        "【已確認 Pivot】"
     ]
-
-    # ---- 大勢：舊 Pivot ----
-    L.append("【已確認 Pivot】")
     if pivot_sigs:
         for s in pivot_sigs:
             if s['level'] in ['M', 'W']:
-                L.append("   " + fmt_pivot_signal(
-                    {'sticker': s['sticker'], 'name': s['name']},
-                    s['level'], s
-                ))
+                L.append("   " + fmt_pivot_signal(s, s['level'], s))
     else:
         L.append("   🟢 暫無")
 
-    # ---- 大勢：新雙重 Lookback ----
     L.append("")
     L.append("【即時雙重 Lookback】")
-    if dual_sigs_mw:
-        for block in dual_sigs_mw:
+    if dual_mw_blocks:
+        for block in dual_mw_blocks:
             L.append(block)
     else:
         L.append("   🟢 暫無")
@@ -504,10 +505,9 @@ def build_email_body(pivot_sigs, dual_sigs, dual_sigs_mw):
     L.append("")
     L.append("   " + macro_bg)
 
-    # ---- 今晚 ----
     L.extend([sep, "🚨 今晚即時（日 / 4H）", sep])
-    if dual_sigs:
-        for block in dual_sigs:
+    if dual_sigs_dh:
+        for block in group_dual_by_ticker_lv(dual_sigs_dh):
             L.append(block)
     else:
         L.append("   🟢 暫無顯著背離")
@@ -523,33 +523,13 @@ def build_email_body(pivot_sigs, dual_sigs, dual_sigs_mw):
 
 # ==================== 主程式 ====================
 
-def group_dual_by_ticker_lv(signals):
-    """將新邏輯訊號按 (ticker, level, type) 分組，每組顯示成一個 block"""
-    groups = {}
-    for s in signals:
-        key = (s['ticker'], s['level'], s['type'])
-        groups.setdefault(key, []).append(s)
-
-    blocks = []
-    for (ticker, lv, direction), sigs in groups.items():
-        info = ALL_TARGETS[ticker]
-        # 排序：長先短後，DIF 先 J
-        sigs_sorted = sorted(sigs, key=lambda x: (
-            0 if x['label'] == '長' else 1,
-            0 if x['ind'] == 'DIF' else 1
-        ))
-        header = fmt_dual_signal_header(info, lv, sigs_sorted)
-        body_lines = [fmt_dual_signal_body(s) for s in sigs_sorted]
-        blocks.append(header + "\n" + "\n".join(body_lines))
-    return blocks
-
 def main():
     try:
         print(f"=== 掃描 {len(ALL_TARGETS)} 個標的 ===", flush=True)
 
-        pivot_sigs = []       # 舊邏輯（M/W）
-        dual_mw = []          # 新邏輯（M/W）
-        dual_dh = []          # 新邏輯（D/4H）
+        pivot_sigs = []
+        dual_mw = []
+        dual_dh = []
 
         for t, info in ALL_TARGETS.items():
             # 舊邏輯（M/W）
@@ -575,12 +555,11 @@ def main():
         print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
 
         dual_mw_blocks = group_dual_by_ticker_lv(dual_mw)
-        dual_dh_blocks = group_dual_by_ticker_lv(dual_dh)
 
         body = build_email_body(pivot_sigs, dual_dh, dual_mw_blocks)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V17] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V17.1] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
