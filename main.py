@@ -1,13 +1,8 @@
-# main.py - NQ 0DTE 終極全功能晨報腳本 V16.1
+# main.py - NQ 0DTE 全宏觀晨報 V16.2
 # 改動：
-#   - M/W/D/4H 全部用 scipy find_peaks（放棄 Fractal+ATR）
-#   - recent_window: M=3 W=4 D=7 4H=7
-#   - J filter: >70 / <30
-#   - prominence_pct: M=5.0 W=3.0 D=1.5 4H=0.8
-#   - EMA 補 800/900
-#   - EMA3500 用 5m
-#   - Email 中文喺前 + 分區
-#   - 戰術判斷加科技板塊（NQ/SMH/IGV/XLC）
+#   - 風險評分改權重：M=2.0 W=3.0 D=2.5 4H=2.0
+#   - ES/YM prominence_pct=0.5（其他保持）
+#   - 加「新鮮度」標示（例如「3根前」）
 
 import yfinance as yf
 import os, smtplib, traceback
@@ -27,6 +22,9 @@ EMAIL_CONFIG = {
 }
 
 TECH_TICKERS = ['NQ=F', 'SMH', 'IGV', 'XLC']
+
+# ES / YM 用較鬆 prominence（因為波幅較細）
+LOOSE_PROMINENCE = {'ES=F': 0.5, 'YM=F': 0.5}
 
 ALL_TARGETS = {
     'NQ=F':       {'name':'納斯達克100期貨','sticker':'📱','weight':5,'category':'TECH'},
@@ -81,8 +79,6 @@ def calculate_custom_indicators(df):
         'EMA900': ema900, 'EMA1000': ema1000, 'EMA3500': ema3500
     })
 
-# ==================== scipy pivots（所有週期統一）====================
-
 def scipy_pivots(series, prominence_pct=1.5, distance=3):
     if len(series) < 20:
         return [], []
@@ -91,9 +87,13 @@ def scipy_pivots(series, prominence_pct=1.5, distance=3):
     lows, _ = find_peaks(-series.values, prominence=prominence, distance=distance)
     return list(highs), list(lows)
 
-# ==================== 背離判斷 ====================
+# ==================== 背離（帶新鮮度）====================
 
-def check_divergence(p_s, i_s, highs, lows, last_idx, recent_window):
+def check_divergence(p_s, i_s, highs, lows, last_idx, recent_window, lv):
+    """
+    回傳: (方向, 距離)
+    距離 = 最新 pivot 距離今日幾根
+    """
     top_div = None
     bot_div = None
 
@@ -117,11 +117,18 @@ def check_divergence(p_s, i_s, highs, lows, last_idx, recent_window):
 
     if top_div and bot_div:
         if top_div['dist'] != bot_div['dist']:
-            return '頂' if top_div['dist'] < bot_div['dist'] else '底'
-        return '頂' if top_div['strength'] > bot_div['strength'] else '底'
-    if top_div: return '頂'
-    if bot_div: return '底'
+            return ('頂', top_div['dist']) if top_div['dist'] < bot_div['dist'] else ('底', bot_div['dist'])
+        return ('頂', top_div['dist']) if top_div['strength'] > bot_div['strength'] else ('底', bot_div['dist'])
+    if top_div: return ('頂', top_div['dist'])
+    if bot_div: return ('底', bot_div['dist'])
     return None
+
+def format_freshness(dist, lv):
+    """格式化新鮮度"""
+    unit = {'M': '個月', 'W': '週', 'D': '日', '4H': '根'}[lv]
+    if dist == 0: return "最新"
+    if dist == 1: return f"1{unit}前"
+    return f"{dist}{unit}前"
 
 # ==================== 掃描 ====================
 
@@ -151,36 +158,45 @@ def scan_asset(t, info):
             p_s = calc_df['Close']
             last_idx = len(calc_df) - 1
 
+            # ES / YM 用較鬆 prominence
+            prom = LOOSE_PROMINENCE.get(t, params['prominence_pct'])
+
             highs, lows = scipy_pivots(
                 p_s,
-                prominence_pct=params['prominence_pct'],
+                prominence_pct=prom,
                 distance=params['distance']
             )
             rw = params['recent_window']
 
-            # DIF 背離
-            d_dif = check_divergence(p_s, calc_df['DIF'], highs, lows, last_idx, rw)
+            # DIF
+            d_dif = check_divergence(p_s, calc_df['DIF'], highs, lows, last_idx, rw, lv)
             if d_dif:
-                sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_dif, 'ind': 'DIF'})
+                direction, dist = d_dif
+                sigs.append({**info, 'ticker': t, 'level': lv, 'dir': direction,
+                             'ind': 'DIF', 'dist': dist})
 
-            # J 背離（>70 / <30）
+            # J（>70 / <30）
             curr_j = calc_df['J'].iloc[-1]
-            d_j = check_divergence(p_s, calc_df['J'], highs, lows, last_idx, rw)
+            d_j = check_divergence(p_s, calc_df['J'], highs, lows, last_idx, rw, lv)
             if d_j:
-                if d_j == '頂' and curr_j > 70:
-                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
-                elif d_j == '底' and curr_j < 30:
-                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
+                direction, dist = d_j
+                if direction == '頂' and curr_j > 70:
+                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': direction,
+                                 'ind': 'J', 'dist': dist})
+                elif direction == '底' and curr_j < 30:
+                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': direction,
+                                 'ind': 'J', 'dist': dist})
 
         except Exception as e:
             print(f"[scan_asset] {t} {lv} 失敗: {e}")
 
     return sigs
 
-# ==================== 風險評分 ====================
+# ==================== 風險評分（新權重）====================
 
 def calculate_detailed_risk_score(sigs):
-    level_weights = {'M': 4.0, 'W': 4.0, 'D': 2.5, '4H': 1.5}
+    # 新權重
+    level_weights = {'M': 2.0, 'W': 3.0, 'D': 2.5, '4H': 2.0}
     level_priority = {'M': 4, 'W': 3, 'D': 2, '4H': 1}
 
     ticker_max_sigs = {}
@@ -335,7 +351,7 @@ def get_nq_custom_chart_status():
     except Exception as e:
         return f"5m 均線帶失敗: {e}"
 
-# ==================== 訊號分組（中文喺前）====================
+# ==================== 訊號分組 ====================
 
 def process_and_group_signals(sigs):
     grouped = {}
@@ -348,9 +364,10 @@ def process_and_group_signals(sigs):
         if key not in grouped:
             grouped[key] = {
                 'ticker': t, 'name': s['name'], 'sticker': s.get('sticker', ''),
-                'dir': s['dir'], 'ind': s['ind'], 'levels': []
+                'dir': s['dir'], 'ind': s['ind'], 'levels': [], 'dists': []
             }
         grouped[key]['levels'].append(s['level'])
+        grouped[key]['dists'].append((s['level'], s.get('dist', 0)))
 
     big_picture = []
     tonight = []
@@ -365,7 +382,12 @@ def process_and_group_signals(sigs):
         sorted_lvls = sorted(set(data['levels']), key=lambda x: level_order.get(x, 99))
         lvl_str = "+".join(sorted_lvls)
 
-        line = f"{data['sticker']} {data['name']} ({t}) | {lvl_str} {direction}背離 [{ind}]"
+        # 新鮮度：用最新嗰個週期嘅 dist
+        latest_lv = sorted_lvls[0] if sorted_lvls[0] in ['4H', 'D'] else sorted_lvls[-1]
+        dist_for_lv = next((d for lv, d in data['dists'] if lv == latest_lv), 0)
+        freshness = format_freshness(dist_for_lv, latest_lv)
+
+        line = f"{data['sticker']} {data['name']} ({t}) | {lvl_str} {direction}背離 [{ind}] ({freshness})"
 
         if any(lv in ['M', 'W'] for lv in data['levels']):
             big_picture.append(line)
@@ -390,7 +412,6 @@ def build_email_body(sigs):
     big_picture, tonight, conflicts = process_and_group_signals(sigs)
     rating, breakdown = calculate_detailed_risk_score(sigs)
 
-    # 戰術（科技板塊）
     tech_4h_top = [s for s in sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['dir'] == '頂']
     tech_4h_bot = [s for s in sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['dir'] == '底']
     big_top = [s for s in sigs if s['level'] in ['W', 'M'] and s['dir'] == '頂']
@@ -408,10 +429,8 @@ def build_email_body(sigs):
     sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     L = [
-        f"⚡ Radar V16.1 0DTE 全宏觀晨報 | {now} HKT",
-        sep,
-        "🏛️ 大勢背景（月 / 週線）",
-        sep,
+        f"⚡ Radar V16.2 0DTE 全宏觀晨報 | {now} HKT",
+        sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
     L.extend(big_picture if big_picture else ["   🟢 月/週線暫無顯著背離"])
     L.append("   " + macro_bg)
@@ -432,8 +451,6 @@ def build_email_body(sigs):
     L.extend([sep, f"整體風險評級 : {rating}", f"📊 拆解 : {breakdown}", sep])
     return "\n".join(L)
 
-# ==================== 主程式 ====================
-
 def main():
     try:
         print(f"=== 掃描 {len(ALL_TARGETS)} 個標的 ===", flush=True)
@@ -448,7 +465,7 @@ def main():
         body = build_email_body(sigs)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V16.1] 三大期指與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V16.2] 三大期指與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
