@@ -1,10 +1,9 @@
-# main.py - NQ 0DTE 全宏觀晨報 V17.1
+# main.py - NQ 0DTE 全宏觀晨報 V17.2
 # ============================================
-# V17.1 改動（相對 V17.0）：
-#   1. 加過濾：只顯示「長」lookback，短訊號隱藏但有提示
-#   2. ind_drop_min: 3% → 5%
-#   3. price_tol: M=2% W=1.5% D=0.5% 4H=0.3%
-#   4. 修 KeyError: 'ticker'
+# V17.2 改動（相對 V17.1）：
+#   1. 修 fmt_dual_signal_body 嘅 KeyError: 'label'
+#   2. M/W 都加「只顯示長」lookback 邏輯
+#   3. 其他保持 V17.1
 # ============================================
 
 import yfinance as yf
@@ -401,9 +400,15 @@ def fmt_pivot_signal(info, lv, sig):
     return f"{info['sticker']} {info['name']} ({info['ticker']}) | {lv} {sig['dir']}背離 [{sig['ind']}] ({tag})"
 
 def fmt_dual_signal_body(sig):
-    icon = '🔥🔥' if sig['label'] == '長' else '🔥'
+    """V17.2 修正：用 sig.get('lookback') 而唔係 sig['label']"""
+    label = sig.get('lookback', 'long')
+    is_long = (label == 'long')
+
+    icon = '🔥🔥' if is_long else '🔥'
     if sig['tag'] in ['雙頂', '雙底']:
-        icon = '⚡⚡' if sig['label'] == '長' else '⚡'
+        icon = '⚡⚡' if is_long else '⚡'
+
+    label_str = '長' if is_long else '短'
 
     ind_name = sig['ind']
     prev_ind = sig['prev_ind']
@@ -411,7 +416,7 @@ def fmt_dual_signal_body(sig):
     dist = sig['dist']
 
     return (
-        f"   [{ind_name}] {icon} {sig['label']}{sig['tag']}："
+        f"   [{ind_name}] {icon} {label_str}{sig['tag']}："
         f"前{'高' if sig['type'] == '頂' else '低'} {sig['prev_price']:,.2f} "
         f"({dist} 根前, {ind_name}={prev_ind:.4f})\n"
         f"        現價 {sig['current_price']:,.2f} ({ind_name}={curr_ind:.4f})\n"
@@ -421,7 +426,12 @@ def fmt_dual_signal_body(sig):
 # ==================== 分組 ====================
 
 def group_dual_by_ticker_lv(signals):
-    """將新邏輯訊號按 (ticker, level, type) 分組"""
+    """
+    V17.2 改動：
+      - M/W 同 D/4H 一樣，只顯示「長」lookback
+      - 如果有短但冇長 → 顯示短
+      - 如果有長有短 → 只顯示長 + 提示
+    """
     groups = {}
     for s in signals:
         key = (s['ticker'], s['level'], s['type'])
@@ -483,7 +493,7 @@ def build_email_body(pivot_sigs, dual_sigs_dh, dual_mw_blocks):
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V17.1 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V17.2 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
         "【已確認 Pivot】"
     ]
@@ -554,12 +564,13 @@ def main():
         print(f"新邏輯 M/W: {len(dual_mw)}", flush=True)
         print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
 
+        # V17.2：M/W 同 D/4H 一樣，用 group_dual_by_ticker_lv 過濾
         dual_mw_blocks = group_dual_by_ticker_lv(dual_mw)
 
         body = build_email_body(pivot_sigs, dual_dh, dual_mw_blocks)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V17.1] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V17.2] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
