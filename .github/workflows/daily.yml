@@ -1,3 +1,10 @@
+- name: Run diag
+  run: python diag.py
+
+
+
+
+
 name: daily-radar
 
 on:
