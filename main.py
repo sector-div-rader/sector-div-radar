@@ -22,19 +22,19 @@ ALL_TARGETS = {
     'ES=F':       {'name':'標普500期貨','sticker':'📈','weight':4,'category':'INDEX'},
     'YM=F':       {'name':'道指期貨',  'sticker':'🏛️','weight':4,'category':'INDEX'},
     '^VIX':       {'name':'恐慌指數',  'sticker':'😱','weight':3,'category':'INDEX'},
-    
+
     # 宏觀資產與大宗商品
     'GC=F':       {'name':'黃金期貨',  'sticker':'🥇','weight':3,'category':'MACRO'},
     'CL=F':       {'name':'原油期貨',  'sticker':'🛢️','weight':3,'category':'MACRO'},
     'DX-Y.NYB':   {'name':'美元指數',  'sticker':'💵','weight':3,'category':'MACRO'},
     '^TNX':       {'name':'美債10年收益率','sticker':'📊','weight':3,'category':'MACRO'},
-    
+
     # 科技與科技衍生板塊
     'SMH':        {'name':'美股半導體(核心)','sticker':'💾','weight':4,'category':'TECH'},
     'IGV':        {'name':'美股軟件服務','sticker':'💿','weight':3,'category':'TECH'},
     'XLC':        {'name':'通訊服務ETF','sticker':'📡','weight':3,'category':'TECH'},
     'XLY':        {'name':'非必需消費ETF','sticker':'🛍️','weight':3,'category':'CYCLICAL'},
-    
+
     # 週期與防禦板塊
     'XLF':        {'name':'金融板塊ETF','sticker':'🏦','weight':3,'category':'CYCLICAL'},
     'XLE':        {'name':'能源板塊ETF','sticker':'⚡','weight':3,'category':'CYCLICAL'},
@@ -56,7 +56,7 @@ def calculate_custom_indicators(df):
     ema1000 = close.ewm(span=1000, adjust=False).mean() if len(df) >= 1000 else pd.Series(index=df.index)
     ema3500 = close.ewm(span=3500, adjust=False).mean() if len(df) >= 3500 else pd.Series(index=df.index)
 
-    # MACD DIF
+    # MACD DIF (保持 5/26)
     ema5 = close.ewm(span=5, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
     dif = ema5 - ema26
@@ -113,18 +113,32 @@ def scan_asset(t, info):
     for lv, (itv, per, lb), n in config:
         try:
             raw_df = yf.Ticker(t).history(period=per, interval=itv)
-            if len(raw_df) < 40: continue
+
+            # 4H：由 1h resample 出嚟
+            if lv == '4H' and not raw_df.empty:
+                raw_df = raw_df.resample('4h').agg({
+                    'Open': 'first', 'High': 'max', 'Low': 'min',
+                    'Close': 'last', 'Volume': 'sum'
+                }).dropna()
+
+            if len(raw_df) < 40:
+                continue
+
             calc_df = calculate_custom_indicators(raw_df)
-            
+
             d_dif = find_div_custom(calc_df['Close'], calc_df['DIF'], lookback=lb, n=n)
-            if d_dif: sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_dif, 'ind': 'DIF'})
+            if d_dif:
+                sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_dif, 'ind': 'DIF'})
 
             curr_j = calc_df['J'].iloc[-1]
             d_j = find_div_custom(calc_df['Close'], calc_df['J'], lookback=lb, n=n)
             if d_j:
-                if d_j == '頂' and curr_j > 75: sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
-                elif d_j == '底' and curr_j < 25: sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
-        except: pass
+                if d_j == '頂' and curr_j > 75:
+                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
+                elif d_j == '底' and curr_j < 25:
+                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': d_j, 'ind': 'J'})
+        except Exception as e:
+            print(f"[scan_asset] {t} {lv} 失敗: {e}")
     return sigs
 
 # ==================== 風險評分引擎 (雙重去重算分) ====================
@@ -139,7 +153,7 @@ def calculate_detailed_risk_score(sigs):
         t = s['ticker']
         lvl = s['level']
         new_prio = level_priority.get(lvl, 0)
-        
+
         if t not in ticker_max_sigs:
             ticker_max_sigs[t] = {'max_lvl_prio': new_prio, 'sigs': [s]}
         else:
@@ -157,7 +171,7 @@ def calculate_detailed_risk_score(sigs):
     # 第二階段：每個標的僅計算 1 次最長週期分數 (DIF 優先)
     for t, data in ticker_max_sigs.items():
         max_sigs = data['sigs']
-        
+
         dif_sig = next((s for s in max_sigs if s['ind'] == 'DIF'), None)
         target_sig = dif_sig if dif_sig else max_sigs[0]
 
@@ -198,20 +212,20 @@ def calculate_detailed_risk_score(sigs):
 def get_today_calendar_events():
     now_hkt = datetime.now(timezone(timedelta(hours=8)))
     weekday = now_hkt.weekday()
-    
+
     events = []
     if weekday == 3:
         events.append("20:30 HKT | 🇺🇸 美國初請失業金人數 (Initial Jobless Claims)")
     elif weekday == 4:
         events.append("20:30 HKT | 🇺🇸 美國核心 PCE / 核心 CPI / 耐久財訂單數據")
-        
+
     events.append("21:30 HKT | 🔔 美股常規盤正式開盤 (0DTE 主要流動性湧入)")
     events.append("22:00 HKT | 🇺🇸 密歇根大學消費者信心指數 / ISM 採購經理人指數 (若有)")
-    
+
     lines = ["📅 【今晚 0DTE 關鍵日曆與催化劑時間軸】："]
     for ev in events:
         lines.append(f"   * {ev}")
-        
+
     lines.extend([
         "",
         "🛡️ 【0DTE 日曆風控鐵律】：",
@@ -260,7 +274,7 @@ def get_overnight_and_key_levels():
         high_p = nq['High'].iloc[-2]
         low_p = nq['Low'].iloc[-2]
         close_p = nq['Close'].iloc[-2]
-        
+
         pivot = (high_p + low_p + close_p) / 3.0
         r1 = (2 * pivot) - low_p
         s1 = (2 * pivot) - high_p
@@ -279,63 +293,64 @@ def get_overnight_and_key_levels():
     except Exception as e:
         return "🌐 隔夜與宏觀數據擷取失敗", "📍 Key Levels 計算失敗"
 
-# NQ 期貨 1 分鐘 (1m) 圖形態監測
+# NQ 期貨 5m 圖形態監測（原 1m，改用 5m 以累積足夠 3500 條計算 EMA3500）
 def get_nq_custom_chart_status():
     try:
         ticker = yf.Ticker('NQ=F')
-        raw_df = ticker.history(period='5d', interval='1m')
+        # 5m + 1mo：約 3000-3500 條，足夠計 EMA3500
+        raw_df = ticker.history(period='1mo', interval='5m')
 
-        if raw_df.empty or len(raw_df) < 100: 
-            return "NQ 1m 數據獲取失敗 (Yahoo Finance API 暫時無回應)"
-            
+        if raw_df.empty or len(raw_df) < 100:
+            return "NQ 5m 數據獲取失敗 (Yahoo Finance API 暫時無回應)"
+
         calc_df = calculate_custom_indicators(raw_df)
         last = calc_df.iloc[-1]
         price = last['Close']
-        
+
         ema700, ema1000, ema3500 = last['EMA700'], last['EMA1000'], last['EMA3500']
         lines = [
-            "🛡️ 【NQ 期貨 1m 圖 EMA 700-1000 帶 & 3500 形態監測】：", 
+            "🛡️ 【NQ 期貨 5m 圖 EMA 700-1000 帶 & 3500 形態監測】：",
             f"   * 現價 : {price:.1f}"
         ]
-        
+
         if not np.isnan(ema700) and not np.isnan(ema1000):
             band_top, band_bot = max(ema700, ema1000), min(ema700, ema1000)
             band_width_pts = band_top - band_bot
             band_width_pct = (band_width_pts / price) * 100
-            
+
             if band_width_pct < 0.15:
-                inner_status = f"🚨 【1m 帶內極度黏合】 (帶寬僅 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
-                inner_hint = "1m 日內籌碼極度集中！今晚突破容易爆發單邊強趨勢，0DTE 可適當讓利潤奔跑。"
+                inner_status = f"🚨 【5m 帶內極度黏合】 (帶寬僅 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
+                inner_hint = "5m 日內籌碼極度集中！今晚突破容易爆發單邊強趨勢，0DTE 可適當讓利潤奔跑。"
             elif band_width_pct > 0.60:
-                inner_status = f"⚠️ 【1m 帶內寬幅發散】 (帶寬達 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
-                inner_hint = "1m 動能充分發散中，留意背離訊號，見好即收，防範帶內劇烈回歸。"
+                inner_status = f"⚠️ 【5m 帶內寬幅發散】 (帶寬達 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
+                inner_hint = "5m 動能充分發散中，留意背離訊號，見好即收，防範帶內劇烈回歸。"
             else:
-                inner_status = f"🟢 【1m 常態帶寬】 (帶寬 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
+                inner_status = f"🟢 【5m 常態帶寬】 (帶寬 {band_width_pts:.1f} 點 / {band_width_pct:.2f}%)"
                 inner_hint = "帶寬處於常態，按 15s/1m 貼身線與背離訊號正常操作。"
-                
-            lines.append(f"   * 📍 1m EMA 700-1000 帶範圍 : {band_bot:.1f} - {band_top:.1f}")
+
+            lines.append(f"   * 📍 5m EMA 700-1000 帶範圍 : {band_bot:.1f} - {band_top:.1f}")
             lines.append(f"     └─ 形態: {inner_status}")
-            
+
             if not np.isnan(ema3500):
-                lines.append(f"   * 🏛️ 1m EMA 3500 鐵板位 : {ema3500:.1f}")
+                lines.append(f"   * 🏛️ 5m EMA 3500 鐵板位 : {ema3500:.1f}")
                 if ema3500 > band_top:
-                    cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (1m 級別長線壓制)"
+                    cross_status = "🚨 【EMA 3500 在 700-1000 帶上方】 (5m 級別長線壓制)"
                 elif ema3500 < band_bot:
-                    cross_status = "🟢 【EMA 3500 在 700-1000 帶下方】 (1m 級別標準多頭)"
+                    cross_status = "🟢 【EMA 3500 在 700-1000 帶下方】 (5m 級別標準多頭)"
                 else:
-                    cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (1m 長短線籌碼交織，極易劇烈洗盤！)"
+                    cross_status = "⚡ 【EMA 3500 穿越/嵌入 700-1000 帶】 (5m 長短線籌碼交織，極易劇烈洗盤！)"
                 lines.append(f"     └─ 穿越狀態: {cross_status}")
             else:
-                lines.append("   * 🏛️ 1m EMA 3500 : 數據累積不足 3500 條，暫不顯示")
-            
+                lines.append("   * 🏛️ 5m EMA 3500 : 數據累積不足 3500 條，暫不顯示")
+
             lines.extend([
-                "   --------------------------------------------------", 
+                "   --------------------------------------------------",
                 f"   🎯 實戰戰術指引：{inner_hint}"
             ])
-            
+
         return "\n".join(lines)
     except Exception as e:
-        return f"1m 均線帶形態監測失敗: {e}"
+        return f"5m 均線帶形態監測失敗: {e}"
 
 # ==================== 背離多週期整合顯示與打架檢測 ====================
 
@@ -364,7 +379,7 @@ def process_and_group_signals(sigs):
 
         sorted_lvls = sorted(data['levels'], key=lambda x: level_order.get(x, 99))
         lvl_str = "+".join(sorted_lvls)
-        
+
         emoji = '🚨' if t in ['NQ=F', 'ES=F', 'YM=F', 'SMH', 'GC=F', 'CL=F', 'DX-Y.NYB', '^TNX'] else '⚠️'
         line = f"{emoji} {t} | {lvl_str} {direction}背離 [{ind}] | {data['name']}"
         result_lines.append(line)
@@ -383,23 +398,23 @@ def build_email_body(sigs):
     overnight_str, levels_str = get_overnight_and_key_levels()
     nq_status = get_nq_custom_chart_status()
     calendar_str = get_today_calendar_events()
-    
+
     grouped_sig_lines, conflict_lines = process_and_group_signals(sigs)
     rating, breakdown_str = calculate_detailed_risk_score(sigs)
-    
+
     nq_4h_top = [s for s in sigs if s['ticker'] == 'NQ=F' and s['level'] == '4H' and s['dir'] == '頂']
     nq_4h_bot = [s for s in sigs if s['ticker'] == 'NQ=F' and s['level'] == '4H' and s['dir'] == '底']
     big_top = [s for s in sigs if s['level'] in ['W', 'M'] and s['dir'] == '頂']
-    
+
     tactics = "🎯 【今晚戰術】：NQ/SMH 出現 4H 頂背離！今晚開盤拉高無力可尋找 Put 機會 (嚴禁追 Call)。" if nq_4h_top else \
               "🎯 【今晚戰術】：NQ/SMH 出現 4H 底背離！今晚開盤急跌砸盤可尋找 Call 機會。" if nq_4h_bot else \
-              "🟢 【今晚戰術】：無直接 4H 轉折訊號，結合 1m EMA 帶形態，開盤用 15s/1m 貼身線尋找進場點。"
-              
+              "🟢 【今晚戰術】：無直接 4H 轉折訊號，結合 5m EMA 帶形態，開盤用 15s/1m 貼身線尋找進場點。"
+
     macro_bg = "🏛️ 【大局背景】：週/月線處於大頂背離中！今晚若做 Put 爆發力極大，勝率與盈虧比偏高。" if big_top else \
                "🏛️ 【大局背景】：大週期結構常態，順應日內 15s/1m 貼身動能即可。"
 
     L = [
-        f"⚡ Radar V15.30 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V15.31 0DTE 全宏觀晨報 | {now} HKT",
         "="*55,
         overnight_str,
         "="*55,
@@ -437,15 +452,15 @@ def main():
         sigs = []
         for t, info in ALL_TARGETS.items():
             sigs += scan_asset(t, info)
-            
+
         body = build_email_body(sigs)
-        
+
         msg = MIMEMultipart()
         msg['Subject'] = f"⚡ [0DTE 雷達 09:00] 三大期指與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(f"<pre style='font-family:Consolas,monospace;font-size:14px;background:#f8f9fa;padding:15px;'>{body}</pre>", 'html', 'utf-8'))
-        
+
         s = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
         s.starttls()
         s.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
