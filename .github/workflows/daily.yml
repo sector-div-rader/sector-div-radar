@@ -1,6 +1,4 @@
-- name: Run diag
-  run: python diag.py
-- name: daily-radar
+name: daily-radar
 
 on:
   schedule:
@@ -24,6 +22,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Run diag (只係診斷，跑完可刪)
+        run: python diag.py
 
       - name: Run main.py
         run: python main.py
