@@ -1,8 +1,14 @@
-# main.py - NQ 0DTE 全宏觀晨報 V16.2
-# 改動：
-#   - 風險評分改權重：M=2.0 W=3.0 D=2.5 4H=2.0
-#   - ES/YM prominence_pct=0.5（其他保持）
-#   - 加「新鮮度」標示（例如「3根前」）
+# main.py - NQ 0DTE 全宏觀晨報 V17.0
+# ============================================
+# 主要改動：
+#   1. 大勢（M/W）：舊 Pivot 邏輯 + 新雙重 Lookback 並存
+#   2. 今晚（D/4H）：只用新雙重 Lookback
+#   3. 雙重 Lookback：短 lookback + 長 lookback
+#   4. 標記：🔥短新高 / 🔥🔥長新高 / ⚡短雙頂 / ⚡⚡長雙頂
+#   5. 刪除風險評分
+#   6. Email 分區清晰 + 中文對照
+#   7. M/W 即時用「已收盤 K 線」
+# ============================================
 
 import yfinance as yf
 import os, smtplib, traceback
@@ -22,9 +28,6 @@ EMAIL_CONFIG = {
 }
 
 TECH_TICKERS = ['NQ=F', 'SMH', 'IGV', 'XLC']
-
-# ES / YM 用較鬆 prominence（因為波幅較細）
-LOOSE_PROMINENCE = {'ES=F': 0.5, 'YM=F': 0.5}
 
 ALL_TARGETS = {
     'NQ=F':       {'name':'納斯達克100期貨','sticker':'📱','weight':5,'category':'TECH'},
@@ -47,12 +50,10 @@ ALL_TARGETS = {
     'XLU':        {'name':'公用事業ETF',   'sticker':'💡','weight':2,'category':'DEFENSIVE'},
 }
 
-# ==================== 指標 ====================
+# ==================== 指標計算 ====================
 
 def calculate_custom_indicators(df):
-    close = df['Close']
-    high = df['High']
-    low = df['Low']
+    close = df['Close']; high = df['High']; low = df['Low']
 
     ema50   = close.ewm(span=50, adjust=False).mean()
     ema700  = close.ewm(span=700, adjust=False).mean() if len(df) >= 700 else pd.Series(index=df.index, dtype=float)
@@ -65,8 +66,7 @@ def calculate_custom_indicators(df):
     ema26 = close.ewm(span=26, adjust=False).mean()
     dif = ema5 - ema26
 
-    low9 = low.rolling(9).min()
-    high9 = high.rolling(9).max()
+    low9 = low.rolling(9).min(); high9 = high.rolling(9).max()
     rsv = (close - low9) / (high9 - low9) * 100
     rsv = rsv.fillna(50)
     k = rsv.ewm(com=2, adjust=False).mean()
@@ -79,7 +79,9 @@ def calculate_custom_indicators(df):
         'EMA900': ema900, 'EMA1000': ema1000, 'EMA3500': ema3500
     })
 
-def scipy_pivots(series, prominence_pct=1.5, distance=3):
+# ==================== 舊邏輯：Pivot-to-pivot（只用 M/W）====================
+
+def scipy_pivots(series, prominence_pct=3.0, distance=2):
     if len(series) < 20:
         return [], []
     prominence = series.mean() * prominence_pct / 100
@@ -87,13 +89,8 @@ def scipy_pivots(series, prominence_pct=1.5, distance=3):
     lows, _ = find_peaks(-series.values, prominence=prominence, distance=distance)
     return list(highs), list(lows)
 
-# ==================== 背離（帶新鮮度）====================
-
-def check_divergence(p_s, i_s, highs, lows, last_idx, recent_window, lv):
-    """
-    回傳: (方向, 距離)
-    距離 = 最新 pivot 距離今日幾根
-    """
+def check_pivot_divergence(p_s, i_s, highs, lows, last_idx, recent_window):
+    """Pivot-to-pivot 背離（舊邏輯）"""
     top_div = None
     bot_div = None
 
@@ -104,7 +101,7 @@ def check_divergence(p_s, i_s, highs, lows, last_idx, recent_window, lv):
         if prev_highs:
             h1 = max(prev_highs, key=lambda x: p_s.iloc[x])
             if p_s.iloc[h2] > p_s.iloc[h1] and i_s.iloc[h2] < i_s.iloc[h1]:
-                top_div = {'dist': last_idx - h2, 'strength': i_s.iloc[h1] - i_s.iloc[h2]}
+                top_div = {'dist': last_idx - h2}
 
     recent_lows = [l for l in lows if last_idx - l <= recent_window]
     if recent_lows:
@@ -113,132 +110,199 @@ def check_divergence(p_s, i_s, highs, lows, last_idx, recent_window, lv):
         if prev_lows:
             l1 = min(prev_lows, key=lambda x: p_s.iloc[x])
             if p_s.iloc[l2] < p_s.iloc[l1] and i_s.iloc[l2] > i_s.iloc[l1]:
-                bot_div = {'dist': last_idx - l2, 'strength': i_s.iloc[l2] - i_s.iloc[l1]}
+                bot_div = {'dist': last_idx - l2}
 
     if top_div and bot_div:
-        if top_div['dist'] != bot_div['dist']:
-            return ('頂', top_div['dist']) if top_div['dist'] < bot_div['dist'] else ('底', bot_div['dist'])
-        return ('頂', top_div['dist']) if top_div['strength'] > bot_div['strength'] else ('底', bot_div['dist'])
+        return ('頂', top_div['dist']) if top_div['dist'] <= bot_div['dist'] else ('底', bot_div['dist'])
     if top_div: return ('頂', top_div['dist'])
     if bot_div: return ('底', bot_div['dist'])
     return None
 
-def format_freshness(dist, lv):
-    """格式化新鮮度"""
-    unit = {'M': '個月', 'W': '週', 'D': '日', '4H': '根'}[lv]
-    if dist == 0: return "最新"
-    if dist == 1: return f"1{unit}前"
-    return f"{dist}{unit}前"
+# ==================== 新邏輯：雙重 Lookback ====================
+
+def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
+                        price_tol=0.01, ind_drop_min=0.03):
+    """
+    檢查最新一根 K 線：
+      - 短期（short_lb 根）+ 長期（long_lb 根）兩個 lookback
+      - 每個 lookback：價「接近」前高/前低 + 指標明顯跌/升
+      - 回傳 signals list
+    """
+    if len(price) < long_lb + 2:
+        return []
+
+    last_idx = len(price) - 1
+    p_now = float(price.iloc[last_idx])
+    i_now = float(indicator.iloc[last_idx])
+
+    signals = []
+
+    for label, lb in [('長', long_lb), ('短', short_lb)]:
+        if last_idx - lb < 0:
+            continue
+
+        recent_price = price.iloc[last_idx - lb:last_idx]
+        recent_ind = indicator.iloc[last_idx - lb:last_idx]
+        if len(recent_price) == 0:
+            continue
+
+        # ---- 頂背離 ----
+        prev_high_pos = int(np.argmax(recent_price.values))
+        prev_high_price = float(recent_price.iloc[prev_high_pos])
+        prev_high_ind = float(recent_ind.iloc[prev_high_pos])
+
+        if prev_high_price != 0 and prev_high_ind != 0:
+            price_close = p_now >= prev_high_price * (1 - price_tol)
+            ind_drop = (prev_high_ind - i_now) / abs(prev_high_ind)
+
+            if price_close and ind_drop >= ind_drop_min:
+                is_new_high = p_now > prev_high_price
+                dist = last_idx - (last_idx - lb + prev_high_pos)
+                signals.append({
+                    'type': '頂',
+                    'label': label,
+                    'tag': '新高' if is_new_high else '雙頂',
+                    'current_price': p_now,
+                    'prev_price': prev_high_price,
+                    'current_ind': i_now,
+                    'prev_ind': prev_high_ind,
+                    'dist': dist,
+                    'price_diff_pct': (p_now - prev_high_price) / prev_high_price * 100,
+                    'ind_diff_pct': ind_drop * 100
+                })
+                continue
+
+        # ---- 底背離 ----
+        prev_low_pos = int(np.argmin(recent_price.values))
+        prev_low_price = float(recent_price.iloc[prev_low_pos])
+        prev_low_ind = float(recent_ind.iloc[prev_low_pos])
+
+        if prev_low_price != 0 and prev_low_ind != 0:
+            price_close_low = p_now <= prev_low_price * (1 + price_tol)
+            ind_rise = (i_now - prev_low_ind) / abs(prev_low_ind)
+
+            if price_close_low and ind_rise >= ind_drop_min:
+                is_new_low = p_now < prev_low_price
+                dist = last_idx - (last_idx - lb + prev_low_pos)
+                signals.append({
+                    'type': '底',
+                    'label': label,
+                    'tag': '新低' if is_new_low else '雙底',
+                    'current_price': p_now,
+                    'prev_price': prev_low_price,
+                    'current_ind': i_now,
+                    'prev_ind': prev_low_ind,
+                    'dist': dist,
+                    'price_diff_pct': (p_now - prev_low_price) / prev_low_price * 100,
+                    'ind_diff_pct': ind_rise * 100
+                })
+
+    return signals
+
+# ==================== 參數 ====================
+
+# 舊邏輯（只用 M/W）
+PIVOT_CONFIG = [
+    ('M', '1mo', '5y',  60, {'prominence_pct': 5.0, 'distance': 2, 'recent_window': 3}),
+    ('W', '1wk', '3y',  100, {'prominence_pct': 3.0, 'distance': 2, 'recent_window': 4}),
+]
+
+# 新邏輯雙重 Lookback（所有週期）
+DUAL_LB_CONFIG = {
+    'M':  {'short': 3,  'long': 6,  'price_tol': 0.02,  'ind_drop': 0.03},
+    'W':  {'short': 4,  'long': 10, 'price_tol': 0.015, 'ind_drop': 0.03},
+    'D':  {'short': 5,  'long': 20, 'price_tol': 0.01,  'ind_drop': 0.03},
+    '4H': {'short': 5,  'long': 20, 'price_tol': 0.005, 'ind_drop': 0.03},
+}
+
+INTERVAL_MAP = {
+    'M':  ('1mo', '5y',  60),
+    'W':  ('1wk', '3y',  100),
+    'D':  ('1d',  '6mo', 30),
+    '4H': ('1h',  '60d', 60),
+}
 
 # ==================== 掃描 ====================
 
-def scan_asset(t, info):
-    sigs = []
-    config = [
-        ('M',  '1mo', '5y',  60, {'prominence_pct':5.0, 'distance':2, 'recent_window':3}),
-        ('W',  '1wk', '3y',  100, {'prominence_pct':3.0, 'distance':2, 'recent_window':4}),
-        ('D',  '1d',  '6mo', 30,  {'prominence_pct':1.5, 'distance':3, 'recent_window':7}),
-        ('4H', '1h',  '60d', 60,  {'prominence_pct':0.8, 'distance':3, 'recent_window':7}),
-    ]
+def get_raw_df(t, lv):
+    itv, per, _ = INTERVAL_MAP[lv]
+    raw = yf.Ticker(t).history(period=per, interval=itv)
+    if lv == '4H' and not raw.empty:
+        raw = raw.resample('4h').agg({
+            'Open': 'first', 'High': 'max', 'Low': 'min',
+            'Close': 'last', 'Volume': 'sum'
+        }).dropna()
+    return raw
 
-    for lv, itv, per, lb, params in config:
-        try:
-            raw_df = yf.Ticker(t).history(period=per, interval=itv)
+def scan_pivot(t, info, lv, params):
+    """舊邏輯：Pivot-to-pivot（只用 M/W）"""
+    results = []
+    try:
+        raw_df = get_raw_df(t, lv)
+        if len(raw_df) < 40:
+            return results
+        calc_df = calculate_custom_indicators(raw_df)
+        p_s = calc_df['Close']
+        last_idx = len(calc_df) - 1
+        highs, lows = scipy_pivots(p_s, prominence_pct=params['prominence_pct'],
+                                    distance=params['distance'])
+        rw = params['recent_window']
 
-            if lv == '4H' and not raw_df.empty:
-                raw_df = raw_df.resample('4h').agg({
-                    'Open':'first','High':'max','Low':'min',
-                    'Close':'last','Volume':'sum'
-                }).dropna()
+        # DIF 背離
+        d = check_pivot_divergence(p_s, calc_df['DIF'], highs, lows, last_idx, rw)
+        if d:
+            results.append({'ind': 'DIF', 'dir': d[0], 'dist': d[1]})
 
-            if len(raw_df) < 40:
-                continue
+        # J 背離
+        d = check_pivot_divergence(p_s, calc_df['J'], highs, lows, last_idx, rw)
+        if d:
+            curr_j = float(calc_df['J'].iloc[-1])
+            if (d[0] == '頂' and curr_j > 70) or (d[0] == '底' and curr_j < 30):
+                results.append({'ind': 'J', 'dir': d[0], 'dist': d[1]})
+    except Exception as e:
+        print(f"[scan_pivot] {t} {lv}: {e}")
+    return results
 
-            calc_df = calculate_custom_indicators(raw_df)
-            p_s = calc_df['Close']
-            last_idx = len(calc_df) - 1
+def scan_dual_lookback(t, info, lv):
+    """新邏輯：雙重 Lookback（所有週期）"""
+    results = []
+    try:
+        raw_df = get_raw_df(t, lv)
+        if len(raw_df) < 40:
+            return results
 
-            # ES / YM 用較鬆 prominence
-            prom = LOOSE_PROMINENCE.get(t, params['prominence_pct'])
+        # M/W：只用已收盤 K（去掉最新一根）
+        if lv in ['M', 'W']:
+            raw_df = raw_df.iloc[:-1]
 
-            highs, lows = scipy_pivots(
-                p_s,
-                prominence_pct=prom,
-                distance=params['distance']
-            )
-            rw = params['recent_window']
+        if len(raw_df) < 40:
+            return results
 
-            # DIF
-            d_dif = check_divergence(p_s, calc_df['DIF'], highs, lows, last_idx, rw, lv)
-            if d_dif:
-                direction, dist = d_dif
-                sigs.append({**info, 'ticker': t, 'level': lv, 'dir': direction,
-                             'ind': 'DIF', 'dist': dist})
+        calc_df = calculate_custom_indicators(raw_df)
+        p_s = calc_df['Close']
+        params = DUAL_LB_CONFIG[lv]
 
-            # J（>70 / <30）
-            curr_j = calc_df['J'].iloc[-1]
-            d_j = check_divergence(p_s, calc_df['J'], highs, lows, last_idx, rw, lv)
-            if d_j:
-                direction, dist = d_j
-                if direction == '頂' and curr_j > 70:
-                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': direction,
-                                 'ind': 'J', 'dist': dist})
-                elif direction == '底' and curr_j < 30:
-                    sigs.append({**info, 'ticker': t, 'level': lv, 'dir': direction,
-                                 'ind': 'J', 'dist': dist})
+        # DIF
+        for sig in check_dual_lookback(
+            p_s, calc_df['DIF'],
+            short_lb=params['short'], long_lb=params['long'],
+            price_tol=params['price_tol'], ind_drop_min=params['ind_drop']
+        ):
+            sig['ind'] = 'DIF'
+            results.append(sig)
 
-        except Exception as e:
-            print(f"[scan_asset] {t} {lv} 失敗: {e}")
+        # J
+        for sig in check_dual_lookback(
+            p_s, calc_df['J'],
+            short_lb=params['short'], long_lb=params['long'],
+            price_tol=params['price_tol'], ind_drop_min=params['ind_drop']
+        ):
+            sig['ind'] = 'J'
+            results.append(sig)
 
-    return sigs
-
-# ==================== 風險評分（新權重）====================
-
-def calculate_detailed_risk_score(sigs):
-    # 新權重
-    level_weights = {'M': 2.0, 'W': 3.0, 'D': 2.5, '4H': 2.0}
-    level_priority = {'M': 4, 'W': 3, 'D': 2, '4H': 1}
-
-    ticker_max_sigs = {}
-    for s in sigs:
-        t = s['ticker']
-        new_prio = level_priority.get(s['level'], 0)
-        if t not in ticker_max_sigs:
-            ticker_max_sigs[t] = {'max_lvl_prio': new_prio, 'sigs': [s]}
-        else:
-            cur = ticker_max_sigs[t]['max_lvl_prio']
-            if new_prio > cur:
-                ticker_max_sigs[t] = {'max_lvl_prio': new_prio, 'sigs': [s]}
-            elif new_prio == cur:
-                ticker_max_sigs[t]['sigs'].append(s)
-
-    tech_score = cyclical_score = defensive_score = 0.0
-    for t, data in ticker_max_sigs.items():
-        max_sigs = data['sigs']
-        dif_sig = next((s for s in max_sigs if s['ind'] == 'DIF'), None)
-        target = dif_sig if dif_sig else max_sigs[0]
-
-        base_w = ALL_TARGETS.get(t, {}).get('weight', 3)
-        lvl_w = level_weights.get(target['level'], 1.5)
-        cat = ALL_TARGETS.get(t, {}).get('category', 'CYCLICAL')
-        score_item = base_w * lvl_w
-
-        if cat == 'TECH': tech_score += score_item * 1.5
-        elif cat == 'DEFENSIVE': defensive_score += score_item * 0.8
-        else: cyclical_score += score_item * 1.0
-
-    total = round(tech_score + cyclical_score + defensive_score, 1)
-
-    if total >= 35: rating = "🚨🚨 極高轉折/變盤風險"
-    elif total >= 22: rating = "🚨 高轉折風險"
-    elif total >= 12: rating = "⚠️ 中度波動風險"
-    elif total >= 5: rating = "🟢 低風險/偏趨勢"
-    else: rating = "🟢🟢 極低風險"
-
-    breakdown = (f"總分: {total} | 科技: {round(tech_score,1)} / "
-                 f"週期宏觀: {round(cyclical_score,1)} / "
-                 f"防禦: {round(defensive_score,1)}")
-    return rating, breakdown
+    except Exception as e:
+        print(f"[scan_dual_lookback] {t} {lv}: {e}")
+    return results
 
 # ==================== 日曆 ====================
 
@@ -271,8 +335,8 @@ def get_overnight_and_key_levels():
         dxy, tnx = h('DX-Y.NYB'), h('^TNX')
 
         def pct(a, b): return ((a - b) / b) * 100
-        def c(x): return x['Close'].iloc[-1]
-        def p(x): return x['Close'].iloc[-2]
+        def c(x): return float(x['Close'].iloc[-1])
+        def p(x): return float(x['Close'].iloc[-2])
 
         header = "\n".join([
             "🌐 隔夜與宏觀數據：",
@@ -281,20 +345,18 @@ def get_overnight_and_key_levels():
             f"   * 宏觀: 美指 {c(dxy):.2f} ({pct(c(dxy),p(dxy)):+.2f}%) | 10年美債 {c(tnx):.3f}% ({pct(c(tnx),p(tnx)):+.2f}%)"
         ])
 
-        high_p = nq['High'].iloc[-2]
-        low_p = nq['Low'].iloc[-2]
-        close_p = nq['Close'].iloc[-2]
+        high_p = float(nq['High'].iloc[-2]); low_p = float(nq['Low'].iloc[-2]); close_p = float(nq['Close'].iloc[-2])
         pivot = (high_p + low_p + close_p) / 3.0
         r1 = 2 * pivot - low_p
         s1 = 2 * pivot - high_p
 
         levels = "\n".join([
             "📍 NQ=F 今晚 0DTE 核心戰術卡位：",
-            f"   * 5日強阻力 : {nq['High'].max():,.1f}",
+            f"   * 5日強阻力 : {float(nq['High'].max()):,.1f}",
             f"   * R1 第一壓力: {r1:,.1f}",
             f"   * Pivot 中軸 : {pivot:,.1f}  (昨收: {close_p:,.1f})",
             f"   * S1 第一支撐: {s1:,.1f}",
-            f"   * 5日強支撐 : {nq['Low'].min():,.1f}"
+            f"   * 5日強支撐 : {float(nq['Low'].min()):,.1f}"
         ])
         return header, levels
     except Exception as e:
@@ -310,14 +372,14 @@ def get_nq_custom_chart_status():
 
         calc_df = calculate_custom_indicators(raw_df)
         last = calc_df.iloc[-1]
-        price = last['Close']
+        price = float(last['Close'])
 
         lines = [
             "🛡️ 【NQ 5m EMA 700-1000 帶 & 3500 監測】：",
             f"   * 現價 : {price:.1f}"
         ]
 
-        band_vals = [v for v in [last['EMA700'], last['EMA800'], last['EMA900'], last['EMA1000']] if not np.isnan(v)]
+        band_vals = [float(v) for v in [last['EMA700'], last['EMA800'], last['EMA900'], last['EMA1000']] if not np.isnan(v)]
         if len(band_vals) >= 2:
             band_top, band_bot = max(band_vals), min(band_vals)
             w_pts = band_top - band_bot
@@ -337,7 +399,7 @@ def get_nq_custom_chart_status():
             lines.append(f"     └─ {status}")
 
             if not np.isnan(last['EMA3500']):
-                e3500 = last['EMA3500']
+                e3500 = float(last['EMA3500'])
                 lines.append(f"   * 🏛️ 5m EMA 3500 : {e3500:.1f}")
                 if e3500 > band_top: cross = "🚨 3500 在帶上方 (長線壓制)"
                 elif e3500 < band_bot: cross = "🟢 3500 在帶下方 (標準多頭)"
@@ -351,70 +413,53 @@ def get_nq_custom_chart_status():
     except Exception as e:
         return f"5m 均線帶失敗: {e}"
 
-# ==================== 訊號分組 ====================
+# ==================== 格式化 ====================
 
-def process_and_group_signals(sigs):
-    grouped = {}
-    conflicts = []
-    level_order = {'4H': 1, 'D': 2, 'W': 3, 'M': 4}
+def fmt_pivot_signal(info, lv, sig):
+    """舊 Pivot 邏輯單行"""
+    dist = sig['dist']
+    unit = {'M': '個月', 'W': '週'}.get(lv, '根')
+    tag = '最新' if dist == 0 else f'{dist}{unit}前'
+    return f"{info['sticker']} {info['name']} ({sig['ticker']}) | {lv} {sig['dir']}背離 [{sig['ind']}] ({tag})"
 
-    for s in sigs:
-        t = s['ticker']
-        key = (t, s['dir'], s['ind'])
-        if key not in grouped:
-            grouped[key] = {
-                'ticker': t, 'name': s['name'], 'sticker': s.get('sticker', ''),
-                'dir': s['dir'], 'ind': s['ind'], 'levels': [], 'dists': []
-            }
-        grouped[key]['levels'].append(s['level'])
-        grouped[key]['dists'].append((s['level'], s.get('dist', 0)))
+def fmt_dual_signal_header(info, lv, signals):
+    """新邏輯標題行"""
+    direction = signals[0]['type']
+    current_price = signals[0]['current_price']
+    return f"🚨 {info['name']} ({info['ticker']}) | {lv} {direction}背離 (現價 {current_price:,.2f})"
 
-    big_picture = []
-    tonight = []
-    ticker_dirs = {}
+def fmt_dual_signal_body(sig):
+    """新邏輯細節行"""
+    icon = '🔥🔥' if sig['label'] == '長' else '🔥'
+    if sig['tag'] in ['雙頂', '雙底']:
+        icon = '⚡⚡' if sig['label'] == '長' else '⚡'
 
-    for key, data in grouped.items():
-        t, direction, ind = key
-        if t not in ticker_dirs:
-            ticker_dirs[t] = set()
-        ticker_dirs[t].add(direction)
+    ind_name = sig['ind']
+    prev_ind = sig['prev_ind']
+    curr_ind = sig['current_ind']
+    dist = sig['dist']
 
-        sorted_lvls = sorted(set(data['levels']), key=lambda x: level_order.get(x, 99))
-        lvl_str = "+".join(sorted_lvls)
+    return (
+        f"   [{ind_name}] {icon} {sig['label']}{sig['tag']}："
+        f"前{'高' if sig['type'] == '頂' else '低'} {sig['prev_price']:,.2f} "
+        f"({dist} 根前, {ind_name}={prev_ind:.4f})\n"
+        f"        現價 {sig['current_price']:,.2f} ({ind_name}={curr_ind:.4f})\n"
+        f"        價: {sig['price_diff_pct']:+.2f}% / {ind_name}: {sig['ind_diff_pct']:+.2f}%"
+    )
 
-        # 新鮮度：用最新嗰個週期嘅 dist
-        latest_lv = sorted_lvls[0] if sorted_lvls[0] in ['4H', 'D'] else sorted_lvls[-1]
-        dist_for_lv = next((d for lv, d in data['dists'] if lv == latest_lv), 0)
-        freshness = format_freshness(dist_for_lv, latest_lv)
+# ==================== Email 組裝 ====================
 
-        line = f"{data['sticker']} {data['name']} ({t}) | {lvl_str} {direction}背離 [{ind}] ({freshness})"
-
-        if any(lv in ['M', 'W'] for lv in data['levels']):
-            big_picture.append(line)
-        if any(lv in ['D', '4H'] for lv in data['levels']):
-            tonight.append(line)
-
-    for t, dirs in ticker_dirs.items():
-        if '頂' in dirs and '底' in dirs:
-            name = ALL_TARGETS.get(t, {}).get('name', t)
-            conflicts.append(f"⚡ {name} ({t}) 同時出現「頂背離 + 底背離」！劇烈震盪洗盤，建議觀望。")
-
-    return big_picture, tonight, conflicts
-
-# ==================== Email ====================
-
-def build_email_body(sigs):
+def build_email_body(pivot_sigs, dual_sigs, dual_sigs_mw):
     now = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
     overnight_str, levels_str = get_overnight_and_key_levels()
     nq_status = get_nq_custom_chart_status()
     calendar_str = get_today_calendar_events()
 
-    big_picture, tonight, conflicts = process_and_group_signals(sigs)
-    rating, breakdown = calculate_detailed_risk_score(sigs)
+    sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    tech_4h_top = [s for s in sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['dir'] == '頂']
-    tech_4h_bot = [s for s in sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['dir'] == '底']
-    big_top = [s for s in sigs if s['level'] in ['W', 'M'] and s['dir'] == '頂']
+    # ---- 今晚戰術 ----
+    tech_4h_top = [s for s in dual_sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '頂']
+    tech_4h_bot = [s for s in dual_sigs if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '底']
 
     if tech_4h_top:
         tactics = "🎯 今晚戰術：科技板塊 4H 頂背離！開盤拉高無力可搵 Put (嚴禁追 Call)。"
@@ -423,53 +468,123 @@ def build_email_body(sigs):
     else:
         tactics = "🟢 今晚戰術：無 4H 轉折訊號，結合 5m EMA 帶形態即市操作。"
 
+    # ---- 大勢背景 ----
+    big_top = [s for s in pivot_sigs if s['level'] in ['M', 'W'] and s['dir'] == '頂']
     macro_bg = "🏛️ 大勢背景：週/月線大頂背離中！做 Put 爆發力大。" if big_top else \
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
-    sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
     L = [
-        f"⚡ Radar V16.2 0DTE 全宏觀晨報 | {now} HKT",
-        sep, "🏛️ 大勢背景（月 / 週線）", sep,
+        f"⚡ Radar V17.0 0DTE 全宏觀晨報 | {now} HKT",
+        sep,
+        "🏛️ 大勢背景（月 / 週線）",
+        sep,
     ]
-    L.extend(big_picture if big_picture else ["   🟢 月/週線暫無顯著背離"])
+
+    # ---- 大勢：舊 Pivot ----
+    L.append("【已確認 Pivot】")
+    if pivot_sigs:
+        for s in pivot_sigs:
+            if s['level'] in ['M', 'W']:
+                L.append("   " + fmt_pivot_signal(
+                    {'sticker': s['sticker'], 'name': s['name']},
+                    s['level'], s
+                ))
+    else:
+        L.append("   🟢 暫無")
+
+    # ---- 大勢：新雙重 Lookback ----
+    L.append("")
+    L.append("【即時雙重 Lookback】")
+    if dual_sigs_mw:
+        for block in dual_sigs_mw:
+            L.append(block)
+    else:
+        L.append("   🟢 暫無")
+
+    L.append("")
     L.append("   " + macro_bg)
 
-    L.extend([sep, "🎯 今晚操作（日 / 4H）", sep])
-    L.extend(tonight if tonight else ["   🟢 日/4H 暫無顯著背離"])
+    # ---- 今晚 ----
+    L.extend([sep, "🚨 今晚即時（日 / 4H）", sep])
+    if dual_sigs:
+        for block in dual_sigs:
+            L.append(block)
+    else:
+        L.append("   🟢 暫無顯著背離")
+    L.append("")
     L.append("   " + tactics)
 
     L.extend([sep, "📊 隔夜與宏觀", sep, overnight_str])
     L.extend([sep, "📍 NQ 關鍵位", sep, levels_str])
     L.extend([sep, "🛡️ 5m EMA 帶監測", sep, nq_status])
-    L.extend([sep, "📅 今晚日曆", sep, calendar_str])
+    L.extend([sep, "📅 今晚日曆", sep, calendar_str, sep])
 
-    if conflicts:
-        L.extend([sep, "🔥 多空衝突警告", sep])
-        for c in conflicts: L.append(f"   * {c}")
-
-    L.extend([sep, f"整體風險評級 : {rating}", f"📊 拆解 : {breakdown}", sep])
     return "\n".join(L)
+
+# ==================== 主程式 ====================
+
+def group_dual_by_ticker_lv(signals):
+    """將新邏輯訊號按 (ticker, level, type) 分組，每組顯示成一個 block"""
+    groups = {}
+    for s in signals:
+        key = (s['ticker'], s['level'], s['type'])
+        groups.setdefault(key, []).append(s)
+
+    blocks = []
+    for (ticker, lv, direction), sigs in groups.items():
+        info = ALL_TARGETS[ticker]
+        # 排序：長先短後，DIF 先 J
+        sigs_sorted = sorted(sigs, key=lambda x: (
+            0 if x['label'] == '長' else 1,
+            0 if x['ind'] == 'DIF' else 1
+        ))
+        header = fmt_dual_signal_header(info, lv, sigs_sorted)
+        body_lines = [fmt_dual_signal_body(s) for s in sigs_sorted]
+        blocks.append(header + "\n" + "\n".join(body_lines))
+    return blocks
 
 def main():
     try:
         print(f"=== 掃描 {len(ALL_TARGETS)} 個標的 ===", flush=True)
-        sigs = []
-        for t, info in ALL_TARGETS.items():
-            result = scan_asset(t, info)
-            if result:
-                print(f"  {t}: {len(result)} 個訊號", flush=True)
-            sigs += result
 
-        print(f"=== 總共 {len(sigs)} 個訊號 ===", flush=True)
-        body = build_email_body(sigs)
+        pivot_sigs = []       # 舊邏輯（M/W）
+        dual_mw = []          # 新邏輯（M/W）
+        dual_dh = []          # 新邏輯（D/4H）
+
+        for t, info in ALL_TARGETS.items():
+            # 舊邏輯（M/W）
+            for lv, itv, per, lb, params in PIVOT_CONFIG:
+                res = scan_pivot(t, info, lv, params)
+                for r in res:
+                    pivot_sigs.append({**info, 'ticker': t, 'level': lv, **r})
+
+            # 新邏輯（M/W）
+            for lv in ['M', 'W']:
+                res = scan_dual_lookback(t, info, lv)
+                for r in res:
+                    dual_mw.append({**info, 'ticker': t, 'level': lv, **r})
+
+            # 新邏輯（D/4H）
+            for lv in ['D', '4H']:
+                res = scan_dual_lookback(t, info, lv)
+                for r in res:
+                    dual_dh.append({**info, 'ticker': t, 'level': lv, **r})
+
+        print(f"舊邏輯訊號: {len(pivot_sigs)}", flush=True)
+        print(f"新邏輯 M/W: {len(dual_mw)}", flush=True)
+        print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
+
+        dual_mw_blocks = group_dual_by_ticker_lv(dual_mw)
+        dual_dh_blocks = group_dual_by_ticker_lv(dual_dh)
+
+        body = build_email_body(pivot_sigs, dual_dh, dual_mw_blocks)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V16.2] 三大期指與跨資產宏觀戰術地圖 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V17] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
-            f"<pre style='font-family:Consolas,Menlo,monospace;font-size:14px;background:#f8f9fa;padding:15px;'>{body}</pre>",
+            f"<pre style='font-family:Consolas,Menlo,monospace;font-size:13px;background:#f8f9fa;padding:15px;'>{body}</pre>",
             'html', 'utf-8'
         ))
 
@@ -479,6 +594,7 @@ def main():
         s.send_message(msg)
         s.quit()
         print("✅ 晨報已發送", flush=True)
+
     except Exception as e:
         print(f"❌ 失敗: {e}", flush=True)
         traceback.print_exc()
