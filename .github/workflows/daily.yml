@@ -1,11 +1,6 @@
 - name: Run diag
   run: python diag.py
-
-
-
-
-
-name: daily-radar
+- name: daily-radar
 
 on:
   schedule:
