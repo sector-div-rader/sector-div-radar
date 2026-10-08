@@ -1,9 +1,8 @@
-# main.py - NQ 0DTE 全宏觀晨報 V17.5
+# main.py - NQ 0DTE 全宏觀晨報 V17.6
 # ============================================
-# V17.5 改動（相對 V17.4）：
-#   1. 每行加週期標籤 [M] / [W] / [D] / [4H]
-#   2. 時間自動轉換：3 個月前 / 2 週前 / 1 日前 / 4 小時前
-#   3. 短 + 長方向矛盾警告
+# V17.6 改動（相對 V17.5）：
+#   1. 4H 時間顯示：超過 24 小時 → N 日前
+#   2. [已確認] 格式統一（加 icon）
 # ============================================
 
 import yfinance as yf
@@ -46,22 +45,25 @@ ALL_TARGETS = {
     'XLU':        {'name':'公用事業ETF',   'sticker':'💡','weight':2,'category':'DEFENSIVE'},
 }
 
-# ==================== 時間單位 ====================
-
-TIME_UNIT = {
-    'M': '個月前',
-    'W': '週前',
-    'D': '日前',
-    '4H': '小時前',
-}
+# ==================== 時間顯示（V17.6）====================
 
 def time_ago(dist, lv):
+    """V17.6：4H 超過 24 小時顯示 N 日前"""
     if dist == 0:
         return '最新'
-    unit = TIME_UNIT.get(lv, '根前')
+    if lv == 'M':
+        return f'{dist} 個月前'
+    if lv == 'W':
+        return f'{dist} 週前'
+    if lv == 'D':
+        return f'{dist} 日前'
     if lv == '4H':
-        return f'{dist * 4} 小時前'
-    return f'{dist} {unit}'
+        hours = dist * 4
+        if hours >= 24:
+            days = hours // 24
+            return f'{days} 日前'
+        return f'{hours} 小時前'
+    return f'{dist} 根前'
 
 # ==================== 指標計算 ====================
 
@@ -413,9 +415,12 @@ def cap_pct(pct):
     return f"{pct:+.2f}%"
 
 def fmt_pivot_signal(sig):
+    """V17.6：統一格式（加 icon）"""
     dist = sig['dist']
     time_str = time_ago(dist, sig['level'])
-    return f"   [已確認] [{sig['level']}][{sig['ind']}] {sig['dir']}背離 ({time_str})"
+    # 已確認 pivot 統一用 ⚡ icon
+    icon = '⚡'
+    return f"   {icon} [已確認] [{sig['level']}][{sig['ind']}] {sig['dir']}背離 ({time_str})"
 
 def fmt_dual_signal_body(sig):
     label = sig.get('lookback', 'long')
@@ -482,7 +487,6 @@ def group_dual_by_ticker(signals):
             if long_bot and short_bot:
                 body_lines.append("      ⚡ 另有短訊號（未顯示）")
 
-        # 矛盾警告
         if top_sigs and bot_sigs:
             body_lines.append("   ⚠️ 短長方向矛盾")
 
@@ -569,7 +573,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V17.5 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V17.6 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
 
@@ -630,7 +634,7 @@ def main():
         body = build_email_body(pivot_sigs, dual_dh, dual_mw)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V17.5] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V17.6] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
