@@ -651,8 +651,13 @@ def send_telegram(text):
         print("[Telegram] 未設定 token 或 chat_id，跳過", flush=True)
         return
     
+    # ===== DEBUG =====
+    print(f"[TG-DEBUG] token 長度: {len(TELEGRAM_TOKEN)}", flush=True)
+    print(f"[TG-DEBUG] token 前 15 字: {TELEGRAM_TOKEN[:15]}", flush=True)
+    print(f"[TG-DEBUG] chat_id repr: {repr(TELEGRAM_CHAT_ID)}", flush=True)
+    # =================
+    
     try:
-        # Telegram 訊息長度限制 4096
         if len(text) > 4000:
             text = text[:4000] + "\n...(截斷)"
         
@@ -664,6 +669,8 @@ def send_telegram(text):
         }, timeout=15)
         print(f"[Telegram] {r.status_code}", flush=True)
         print(f"[TG-DEBUG] response: {r.text[:300]}", flush=True)
+    except Exception as e:
+        print(f"[Telegram] 失敗: {e}", flush=True)
 
 # ==================== Email 組裝 ====================
 
