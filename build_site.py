@@ -1,11 +1,9 @@
-# build_site.py - 生成 index.html Dashboard V19.0
+# build_site.py - 生成 index.html Dashboard V19.1
 # ============================================
-# V19.0 改動：
-#   1. 讀新 history.csv 格式（DIF + J 合併）
-#   2. 表格顯示 DIF / J 合併
-#   3. 按鈕加「多週期共振」「雙指標共振」
-#   4. 加財經日曆
-#   5. 加 5m EMA 帶
+# V19.1 改動（相對 V19.0）：
+#   1. 加財經日曆（從 dashboard_data.json 讀）
+#   2. 加 5m EMA 帶
+#   3. 自動更新 NQ 關鍵位（從 dashboard_data.json 讀）
 # ============================================
 
 import os
@@ -39,6 +37,19 @@ def build_html():
         today_df = pd.DataFrame()
         yesterday_df = pd.DataFrame()
         recent = pd.DataFrame()
+    
+    # 讀 dashboard_data.json
+    dashboard_data = {}
+    if os.path.exists('dashboard_data.json'):
+        try:
+            with open('dashboard_data.json', 'r', encoding='utf-8') as f:
+                dashboard_data = json.load(f)
+        except Exception as e:
+            print(f"⚠️ 讀 dashboard_data.json 失敗: {e}")
+    
+    nq_data = dashboard_data.get('nq_key_levels', {'high': 0, 'low': 0, 'current': 0})
+    nq_ema = dashboard_data.get('nq_ema') or {}
+    fmp_calendar = dashboard_data.get('fmp_calendar', '')
     
     # ===== 統計 =====
     total_signals = len(df) if not df.empty else 0
@@ -213,6 +224,35 @@ def build_html():
           <span class="bar-count">{t['count']}</span>
         </div>'''
     
+    # 財經日曆 HTML
+    fmp_html = fmp_calendar.replace('\n', '<br>') if fmp_calendar else '<p style="color:var(--muted);">暫無數據</p>'
+    
+    # 5m EMA HTML
+    if nq_ema and nq_ema.get('current'):
+        band_top = nq_ema.get('band_top', 0)
+        band_bot = nq_ema.get('band_bot', 0)
+        e3500 = nq_ema.get('ema3500')
+        current = nq_ema['current']
+        w_pts = band_top - band_bot
+        w_pct = (w_pts / current) * 100 if current else 0
+        
+        if w_pct < 0.15:
+            band_status = f'🚨 極度黏合 ({w_pts:.1f} 點 / {w_pct:.2f}%)'
+        elif w_pct > 0.60:
+            band_status = f'⚠️ 寬幅發散 ({w_pts:.1f} 點 / {w_pct:.2f}%)'
+        else:
+            band_status = f'🟢 常態帶寬 ({w_pts:.1f} 點 / {w_pct:.2f}%)'
+        
+        ema_html = f'''
+        <div style="line-height:1.8;">
+          <div>📍 現價：<strong>{current:,.1f}</strong></div>
+          <div>📊 5m EMA 700-1000 帶：<strong>{band_bot:,.1f} - {band_top:,.1f}</strong></div>
+          <div>└─ {band_status}</div>
+          <div>🏛️ 5m EMA 3500：<strong>{f"{e3500:,.1f}" if e3500 else "數據不足"}</strong></div>
+        </div>'''
+    else:
+        ema_html = '<p style="color:var(--muted);">暫無數據</p>'
+    
     trend_data_json = json.dumps({'dates': trend_dates, 'top': trend_top, 'bot': trend_bot}, ensure_ascii=False)
     strength_data_json = json.dumps({'strong': strength_counts['強'], 'medium': strength_counts['中'], 'weak': strength_counts['弱']}, ensure_ascii=False)
     
@@ -220,6 +260,24 @@ def build_html():
         trend_html = '<div class="chart-container"><canvas id="trendChart"></canvas></div>'
     else:
         trend_html = '<p style="color:var(--muted);text-align:center;padding:40px 0;">⏳ 等幾日先有數據（每日 06:00 自動更新）</p>'
+    
+    # NQ Key Level Bar
+    nq_high = nq_data.get('high', 0)
+    nq_low = nq_data.get('low', 0)
+    nq_current = nq_data.get('current', 0)
+    if nq_high > 0 and nq_low > 0:
+        nq_pct = ((nq_current - nq_low) / (nq_high - nq_low)) * 100
+        nq_html = f'''
+        <div class="keylevel">
+          <div class="keylevel-bar" id="nq-bar" data-pct="{nq_pct}"></div>
+          <div class="keylevel-labels">
+            <span>5日低 {nq_low:,.1f}</span>
+            <span>現價 {nq_current:,.1f}</span>
+            <span>5日高 {nq_high:,.1f}</span>
+          </div>
+        </div>'''
+    else:
+        nq_html = '<p style="color:var(--muted);">暫無數據</p>'
     
     html = f"""<!DOCTYPE html>
 <html lang="zh-HK" data-theme="dark">
@@ -272,7 +330,8 @@ def build_html():
   .delta.down {{ color: var(--bot-color); }}
   
   .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }}
-  @media (max-width: 768px) {{ .grid-2 {{ grid-template-columns: 1fr; }} }}
+  .grid-3 {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }}
+  @media (max-width: 768px) {{ .grid-2, .grid-3 {{ grid-template-columns: 1fr; }} }}
   
   .chart-container {{ position: relative; height: 250px; }}
   .donut-container {{ position: relative; height: 200px; }}
@@ -339,6 +398,18 @@ def build_html():
   
   .resonance-item {{ padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--border); }}
   .resonance-item:last-child {{ border-bottom: none; }}
+  
+  .keylevel {{ margin: 15px 0; }}
+  .keylevel-bar {{
+    position: relative; height: 30px;
+    background: linear-gradient(90deg, var(--bot-color) 0%, var(--bg) 50%, var(--top-color) 100%);
+    border-radius: 15px;
+  }}
+  .keylevel-marker {{
+    position: absolute; top: -5px; width: 4px; height: 40px;
+    background: white; border-radius: 2px; box-shadow: 0 0 8px rgba(255,255,255,0.8);
+  }}
+  .keylevel-labels {{ display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--muted); }}
   
   .modal {{
     display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -429,14 +500,30 @@ def build_html():
   </div>
 </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">📈 Top 5 標的（30 日）</h2>
-  {top_tickers_html if top_tickers_html else '<p style="color:var(--muted);">暫無數據</p>'}
+<div class="grid-3">
+  <div class="card">
+    <h2 style="margin-top:0;">📅 財經日曆</h2>
+    <div style="font-size:13px;line-height:1.6;">{fmp_html}</div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">🛡️ NQ 5m EMA 帶</h2>
+    <div style="font-size:13px;">{ema_html}</div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">📍 NQ 關鍵位</h2>
+    {nq_html}
+  </div>
 </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">⭐ 多週期共振</h2>
-  {resonance_html}
+<div class="grid-2">
+  <div class="card">
+    <h2 style="margin-top:0;">📈 Top 5 標的（30 日）</h2>
+    {top_tickers_html if top_tickers_html else '<p style="color:var(--muted);">暫無數據</p>'}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">⭐ 多週期共振</h2>
+    {resonance_html}
+  </div>
 </div>
 
 <h2>🔥 今日訊號</h2>
@@ -466,7 +553,7 @@ def build_html():
 </div>
 
 <div class="footer">
-  ⚡ Radar V19.0 | Powered by GitHub Actions + GitHub Pages
+  ⚡ Radar V19.1 | Powered by GitHub Actions + GitHub Pages
 </div>
 
 </div>
@@ -656,6 +743,16 @@ if (donutCtx) {{
       plugins: {{ legend: {{ position: 'bottom', labels: {{ color: chartTextColor() }} }} }}
     }}
   }});
+}}
+
+// NQ Key Level
+const nqBar = document.getElementById('nq-bar');
+if (nqBar) {{
+  const pct = parseFloat(nqBar.dataset.pct || '50');
+  const marker = document.createElement('div');
+  marker.className = 'keylevel-marker';
+  marker.style.left = Math.max(0, Math.min(100, pct)) + '%';
+  nqBar.appendChild(marker);
 }}
 </script>
 
