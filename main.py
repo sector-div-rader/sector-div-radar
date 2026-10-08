@@ -474,17 +474,32 @@ def get_nq_custom_chart_status():
 # ==================== NQ 數據（for Dashboard）====================
 
 def get_nq_key_levels_data():
-    """V19.1：攞 NQ 關鍵位（for Dashboard）"""
+    """V19.2：攞 NQ 關鍵位（5日 H/L + R1/Pivot/S1）"""
     try:
         nq = yf.Ticker('NQ=F').history(period='5d', interval='1d')
+        high_5d = float(nq['High'].max())
+        low_5d = float(nq['Low'].min())
+        current = float(nq['Close'].iloc[-1])
+        
+        # Pivot Points（用前日 RTH）
+        high_p = float(nq['High'].iloc[-2])
+        low_p = float(nq['Low'].iloc[-2])
+        close_p = float(nq['Close'].iloc[-2])
+        pivot = (high_p + low_p + close_p) / 3.0
+        r1 = 2 * pivot - low_p
+        s1 = 2 * pivot - high_p
+        
         return {
-            'high': float(nq['High'].max()),
-            'low': float(nq['Low'].min()),
-            'current': float(nq['Close'].iloc[-1])
+            'high': high_5d,
+            'low': low_5d,
+            'current': current,
+            'r1': r1,
+            'pivot': pivot,
+            's1': s1,
         }
     except Exception as e:
         print(f"[NQ Key Levels] 失敗: {e}")
-        return {'high': 0, 'low': 0, 'current': 0}
+        return {'high': 0, 'low': 0, 'current': 0, 'r1': 0, 'pivot': 0, 's1': 0}
 
 def get_nq_ema_data():
     """V19.1：攞 NQ 5m EMA 帶（for Dashboard）"""
