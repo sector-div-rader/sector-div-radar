@@ -616,48 +616,110 @@ def get_resonance(dual_mw, dual_dh):
 # ==================== 歷史紀錄 ====================
 
 def save_history(pivot_sigs, dual_mw, dual_dh):
-    """V18.4：只儲存顯示嘅訊號（長優先，短只喺冇長先儲存）"""
+    """V19.0：合併 DIF + J，按 (ticker, level, 方向) 一行"""
     today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
-    rows = []
     
-    # 按 (ticker, level, type, ind) 分組，每個 group 只儲存一個
+    # 按 (ticker, level, 方向) 分組
     grouped = {}
     for s in dual_mw + dual_dh:
-        key = (s['ticker'], s['level'], s['type'], s['ind'])
+        key = (s['ticker'], s['level'], s['type'])
         grouped.setdefault(key, []).append(s)
     
-    for key, sigs in grouped.items():
+    rows = []
+    for (ticker, level, direction), sigs in grouped.items():
+        info = ALL_TARGETS.get(ticker, {})
+        name = info.get('name', ticker)
+        
+        # 分長 / 短（優先長）
         long_sigs = [s for s in sigs if s.get('lookback') == 'long']
         short_sigs = [s for s in sigs if s.get('lookback') == 'short']
+        target_sigs = long_sigs if long_sigs else short_sigs
         
-        if long_sigs:
-            target = long_sigs[0]
-        elif short_sigs:
-            target = short_sigs[0]
-        else:
+        if not target_sigs:
             continue
         
-        strength, _ = get_strength(target['ind_change_pct'])
+        # 搵 DIF / J
+        dif_sig = next((s for s in target_sigs if s['ind'] == 'DIF'), None)
+        j_sig = next((s for s in target_sigs if s['ind'] == 'J'), None)
+        
+        # 取價位（優先 DIF，冇就用 J）
+        ref = dif_sig if dif_sig else j_sig
+        
+        # 計算強度（取最強嗰個）
+        strengths = []
+        if dif_sig:
+            s1, _ = get_strength(dif_sig['ind_change_pct'])
+            strengths.append(s1)
+        if j_sig:
+            s2, _ = get_strength(j_sig['ind_change_pct'])
+            strengths.append(s2)
+        
+        STRENGTH_RANK = {'弱': 1, '中': 2, '強': 3}
+        RANK_TO_STRENGTH = {1: '弱', 2: '中', 3: '強'}
+        
+        if strengths:
+            base_rank = max(STRENGTH_RANK.get(s, 1) for s in strengths)
+        else:
+            base_rank = 1
+        
+        # 升級：DIF + J 都出 → 升一級
+        has_dif = dif_sig is not None
+        has_j = j_sig is not None
+        if has_dif and has_j:
+            base_rank = min(base_rank + 1, 3)
+        
+        final_strength = RANK_TO_STRENGTH[base_rank]
+        
+        # 共振類型
+        if has_dif and has_j:
+            resonance = '雙指標'
+        else:
+            resonance = '單指標'
+        
+        # lookback
+        lookback = 'long' if long_sigs else 'short'
+        
+        # tag（優先 DIF，冇就用 J）
+        tag = ref.get('tag', '')
+        
         rows.append({
             '日期': today,
-            '標的': target['ticker'],
-            '中文名': target['name'],
-            '週期': target['level'],
-            '方向': target['type'],
-            '指標': target['ind'],
-            '前高/低': round(target['prev_price'], 2),
-            '現價': round(target['current_price'], 2),
-            '價變化%': round(target['price_diff_pct'], 2),
-            '指標變化%': round(target['ind_change_pct'], 2),
-            '強度': strength,
-            'lookback': target.get('lookback', 'long'),
-            'tag': target.get('tag', '')
+            '標的': ticker,
+            '中文名': name,
+            '週期': level,
+            '方向': direction,
+            '前高/低': round(ref['prev_price'], 2),
+            '現價': round(ref['current_price'], 2),
+            '價變化%': round(ref['price_diff_pct'], 2),
+            'DIF變化%': round(dif_sig['ind_change_pct'], 2) if dif_sig else '',
+            'J變化%': round(j_sig['ind_change_pct'], 2) if j_sig else '',
+            'DIF有冇': '有' if has_dif else '冇',
+            'J有冇': '有' if has_j else '冇',
+            '強度': final_strength,
+            'lookback': lookback,
+            'tag': tag,
+            '共振': resonance,
         })
     
+    # ===== append 模式 =====
     if rows:
-        df = pd.DataFrame(rows)
-        df.to_csv('history.csv', index=False, encoding='utf-8-sig')
-        print(f"✅ 寫入 history.csv ({len(rows)} 行)", flush=True)
+        new_df = pd.DataFrame(rows)
+        
+        if os.path.exists('history.csv'):
+            try:
+                old_df = pd.read_csv('history.csv', encoding='utf-8-sig')
+                # 移除今日舊數據（避免重複）
+                if '日期' in old_df.columns:
+                    old_df = old_df[old_df['日期'].astype(str) != today]
+                combined = pd.concat([old_df, new_df], ignore_index=True)
+            except Exception as e:
+                print(f"⚠️ 讀舊 history.csv 失敗: {e}，直接覆蓋")
+                combined = new_df
+        else:
+            combined = new_df
+        
+        combined.to_csv('history.csv', index=False, encoding='utf-8-sig')
+        print(f"✅ 寫入 history.csv ({len(rows)} 行，總共 {len(combined)} 行)", flush=True)
 
 # ==================== Telegram 推送 ====================
 
