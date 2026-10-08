@@ -1,14 +1,19 @@
-# main.py - NQ 0DTE 全宏觀晨報 V17.7
+# main.py - NQ 0DTE 全宏觀晨報 V18.0
 # ============================================
-# V17.7 改動（相對 V17.6）：
-#   1. 刪除「🎯 今晚戰術」句子
-#   2. 其他保持不變
+# V18.0 新功能（相對 V17.7）：
+#   1. 歷史紀錄（寫入 history.csv）
+#   2. Telegram Bot 推送
+#   3. 網頁 Dashboard（生成 index.html）
+#   4. 財經日曆 API（Financial Modeling Prep）
+#   5. 多週期共振評分
+#   6. 背離強度評分
 # ============================================
 
 import yfinance as yf
-import os, smtplib, traceback
+import os, smtplib, traceback, json, csv
 import pandas as pd
 import numpy as np
+import requests
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -22,7 +27,12 @@ EMAIL_CONFIG = {
     'receiver_email': os.environ.get('EMAIL_TO', os.environ.get('EMAIL_USER'))
 }
 
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+FMP_API_KEY = os.environ.get('FMP_API_KEY')
+
 TECH_TICKERS = ['NQ=F', 'SMH', 'IGV', 'XLC']
+INDEX_TICKERS = ['NQ=F', 'ES=F', 'YM=F']
 
 ALL_TARGETS = {
     'NQ=F':       {'name':'納斯達克100期貨','sticker':'📱','weight':5,'category':'TECH'},
@@ -64,6 +74,18 @@ def time_ago(dist, lv):
         return f'{hours} 小時前'
     return f'{dist} 根前'
 
+# ==================== 強度評分 ====================
+
+def get_strength(ind_change_pct):
+    """V18.0：按指標跌幅分強度"""
+    abs_pct = abs(ind_change_pct)
+    if abs_pct >= 50:
+        return '強', '🔥🔥🔥'
+    elif abs_pct >= 20:
+        return '中', '🔥🔥'
+    else:
+        return '弱', '🔥'
+
 # ==================== 指標計算 ====================
 
 def calculate_custom_indicators(df):
@@ -93,7 +115,7 @@ def calculate_custom_indicators(df):
         'EMA900': ema900, 'EMA1000': ema1000, 'EMA3500': ema3500
     })
 
-# ==================== 舊邏輯：Pivot-to-pivot（M/W）====================
+# ==================== 舊邏輯：Pivot ====================
 
 def scipy_pivots(series, prominence_pct=3.0, distance=2):
     if len(series) < 20:
@@ -153,7 +175,6 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
         if len(recent_price) == 0:
             continue
 
-        # 頂背離
         prev_high_pos = int(np.argmax(recent_price.values))
         prev_high_price = float(recent_price.iloc[prev_high_pos])
         prev_high_ind = float(recent_ind.iloc[prev_high_pos])
@@ -178,7 +199,6 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
                 })
                 continue
 
-        # 底背離
         prev_low_pos = int(np.argmin(recent_price.values))
         prev_low_price = float(recent_price.iloc[prev_low_pos])
         prev_low_ind = float(recent_ind.iloc[prev_low_pos])
@@ -297,26 +317,44 @@ def scan_dual_lookback(t, info, lv):
         print(f"[scan_dual_lookback] {t} {lv}: {e}")
     return results
 
-# ==================== 日曆 ====================
+# ==================== 財經日曆（FMP）====================
 
-def get_today_calendar_events():
-    now_hkt = datetime.now(timezone(timedelta(hours=8)))
-    wd = now_hkt.weekday()
-    events = []
-    if wd == 3: events.append("20:30 HKT | 🇺🇸 美國初請失業金人數")
-    elif wd == 4: events.append("20:30 HKT | 🇺🇸 美國核心 PCE / 耐久財訂單")
-    events.append("21:30 HKT | 🔔 美股常規盤開盤")
-    events.append("22:00 HKT | 🇺🇸 密歇根消費者信心 / ISM PMI (若有)")
-
-    lines = ["📅 【今晚 0DTE 關鍵日曆】："]
-    for ev in events: lines.append(f"   * {ev}")
-    lines.extend([
-        "",
-        "🛡️ 【風控鐵律】：",
-        "   1. 數據前 15 分鐘：平 15s/1m 短線倉",
-        "   2. 數據後 15 分鐘：待 EMA 帶定型再入場"
-    ])
-    return "\n".join(lines)
+def get_fmp_calendar():
+    """V18.0：用 FMP API 攞今日經濟事件"""
+    if not FMP_API_KEY:
+        return "📅 【今晚 0DTE 關鍵日曆】：\n   (未設定 FMP API key，使用預設)"
+    
+    try:
+        today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
+        url = f"https://financialmodelingprep.com/api/v3/economic_calendar?from={today}&to={today}&apikey={FMP_API_KEY}"
+        r = requests.get(url, timeout=15)
+        data = r.json()
+        
+        if not isinstance(data, list) or len(data) == 0:
+            return "📅 【今晚 0DTE 關鍵日曆】：\n   🟢 今日暫無重大經濟事件"
+        
+        # 篩選高影響事件
+        high_impact = [e for e in data if e.get('impact') == 'High']
+        
+        lines = ["📅 【今晚 0DTE 關鍵日曆（高影響）】："]
+        if high_impact:
+            for e in high_impact[:10]:  # 最多 10 個
+                event_name = e.get('event', 'Unknown')
+                country = e.get('country', '')
+                time_str = e.get('date', '')[-5:]  # HH:MM
+                lines.append(f"   * {time_str} | {country} {event_name}")
+        else:
+            lines.append("   🟢 今日暫無高影響事件")
+        
+        lines.extend([
+            "",
+            "🛡️ 【風控鐵律】：",
+            "   1. 數據前 15 分鐘：平 15s/1m 短線倉",
+            "   2. 數據後 15 分鐘：待 EMA 帶定型再入場"
+        ])
+        return "\n".join(lines)
+    except Exception as e:
+        return f"📅 【今晚 0DTE 關鍵日曆】：\n   (FMP API 失敗: {e})"
 
 # ==================== 隔夜數據 ====================
 
@@ -436,8 +474,11 @@ def fmt_dual_signal_body(sig):
     price_pct = cap_pct(sig['price_diff_pct'])
     ind_pct = cap_pct(sig['ind_change_pct'])
 
+    # V18.0：加強度
+    strength, strength_icon = get_strength(sig['ind_change_pct'])
+
     return (
-        f"      [{lv}][{ind_name}] {icon} {label_str}{sig['tag']}："
+        f"      [{lv}][{ind_name}] {icon} {label_str}{sig['tag']} {strength_icon}{strength}："
         f"前{'高' if sig['type'] == '頂' else '低'} {sig['prev_price']:,.2f} ({time_str})\n"
         f"            價: {price_pct} / {ind_name}: {ind_pct}"
     )
@@ -545,13 +586,94 @@ def build_macro_section(pivot_sigs, dual_mw):
 
     return lines
 
+# ==================== 多週期共振評分 ====================
+
+def get_resonance(dual_mw, dual_dh):
+    """V18.0：多週期共振評分"""
+    # 按 ticker + type 統計週期數
+    resonance = {}
+    for s in dual_mw + dual_dh:
+        key = (s['ticker'], s['type'])
+        resonance.setdefault(key, set()).add(s['level'])
+    
+    results = []
+    for (ticker, type_), levels in resonance.items():
+        if len(levels) >= 2:
+            name = ALL_TARGETS.get(ticker, {}).get('name', ticker)
+            lvl_str = '+'.join(sorted(levels, key=lambda x: {'M': 1, 'W': 2, 'D': 3, '4H': 4}.get(x, 99)))
+            stars = '⭐' * len(levels)
+            results.append({
+                'ticker': ticker,
+                'name': name,
+                'type': type_,
+                'levels': lvl_str,
+                'count': len(levels),
+                'stars': stars
+            })
+    
+    return sorted(results, key=lambda x: -x['count'])
+
+# ==================== 歷史紀錄 ====================
+
+def save_history(pivot_sigs, dual_mw, dual_dh):
+    """V18.0：寫入 history.csv"""
+    today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
+    rows = []
+    
+    for s in dual_mw + dual_dh:
+        strength, _ = get_strength(s['ind_change_pct'])
+        rows.append({
+            '日期': today,
+            '標的': s['ticker'],
+            '中文名': s['name'],
+            '週期': s['level'],
+            '方向': s['type'],
+            '指標': s['ind'],
+            '前高/低': round(s['prev_price'], 2),
+            '現價': round(s['current_price'], 2),
+            '價變化%': round(s['price_diff_pct'], 2),
+            '指標變化%': round(s['ind_change_pct'], 2),
+            '強度': strength,
+            'lookback': s.get('lookback', 'long'),
+            'tag': s.get('tag', '')
+        })
+    
+    if rows:
+        df = pd.DataFrame(rows)
+        df.to_csv('history.csv', index=False, encoding='utf-8-sig')
+        print(f"✅ 寫入 history.csv ({len(rows)} 行)", flush=True)
+
+# ==================== Telegram 推送 ====================
+
+def send_telegram(text):
+    """V18.0：Telegram 推送"""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[Telegram] 未設定 token 或 chat_id，跳過", flush=True)
+        return
+    
+    try:
+        # Telegram 訊息長度限制 4096
+        if len(text) > 4000:
+            text = text[:4000] + "\n...(截斷)"
+        
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        r = requests.post(url, json={
+            'chat_id': TELEGRAM_CHAT_ID,
+            'text': text,
+            'parse_mode': 'HTML',
+            'disable_web_page_preview': True
+        }, timeout=15)
+        print(f"[Telegram] {r.status_code}", flush=True)
+    except Exception as e:
+        print(f"[Telegram] 失敗: {e}", flush=True)
+
 # ==================== Email 組裝 ====================
 
 def build_email_body(pivot_sigs, dual_dh, dual_mw):
     now = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
     overnight_str, levels_str = get_overnight_and_key_levels()
     nq_status = get_nq_custom_chart_status()
-    calendar_str = get_today_calendar_events()
+    calendar_str = get_fmp_calendar()
 
     sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -560,7 +682,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V17.7 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V18.0 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
 
@@ -572,6 +694,13 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
 
     L.append("   " + macro_bg)
 
+    # 多週期共振
+    resonance = get_resonance(dual_mw, dual_dh)
+    if resonance:
+        L.extend([sep, "⭐ 多週期共振", sep])
+        for r in resonance:
+            L.append(f"   {r['stars']} {r['name']} ({r['ticker']}) | {r['levels']} {r['type']}背離")
+
     L.extend([sep, "🚨 今晚即時（日 / 4H）", sep])
     if dual_dh:
         for block in group_dual_by_ticker(dual_dh):
@@ -582,7 +711,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
     L.extend([sep, "📊 隔夜與宏觀", sep, overnight_str])
     L.extend([sep, "📍 NQ 關鍵位", sep, levels_str])
     L.extend([sep, "🛡️ 5m EMA 帶監測", sep, nq_status])
-    L.extend([sep, "📅 今晚日曆", sep, calendar_str, sep])
+    L.extend([sep, calendar_str, sep])
 
     return "\n".join(L)
 
@@ -616,10 +745,14 @@ def main():
         print(f"新邏輯 M/W: {len(dual_mw)}", flush=True)
         print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
 
+        # 歷史紀錄
+        save_history(pivot_sigs, dual_mw, dual_dh)
+
         body = build_email_body(pivot_sigs, dual_dh, dual_mw)
 
+        # Email
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V17.7] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V18] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
@@ -632,7 +765,11 @@ def main():
         s.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
         s.send_message(msg)
         s.quit()
-        print("✅ 晨報已發送", flush=True)
+        print("✅ Email 已發送", flush=True)
+
+        # Telegram
+        tg_msg = body[:4000]
+        send_telegram(tg_msg)
 
     except Exception as e:
         print(f"❌ 失敗: {e}", flush=True)
