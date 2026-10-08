@@ -1,61 +1,181 @@
 <!DOCTYPE html>
-<html lang="zh-HK">
+<html lang="zh-HK" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>⚡ 0DTE Radar Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; }
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --top-bg: rgba(248, 81, 73, 0.08); --top-hover: rgba(248, 81, 73, 0.15);
+    --bot-bg: rgba(63, 185, 80, 0.08); --bot-hover: rgba(63, 185, 80, 0.15);
+    --top-color: #f85149; --bot-color: #3fb950;
+  }
+  [data-theme="light"] {
+    --bg: #f6f8fa; --card: #ffffff; --border: #d0d7de;
+    --text: #1f2328; --muted: #656d76; --accent: #0969da;
+    --top-bg: rgba(207, 34, 46, 0.08); --top-hover: rgba(207, 34, 46, 0.15);
+    --bot-bg: rgba(26, 127, 55, 0.08); --bot-hover: rgba(26, 127, 55, 0.15);
+    --top-color: #cf222e; --bot-color: #1a7f37;
+  }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background: #0d1117; color: #c9d1d9;
-    margin: 0; padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; padding: 20px; transition: all 0.3s;
   }
   .container { max-width: 1400px; margin: 0 auto; }
-  h1 { color: #58a6ff; border-bottom: 2px solid #30363d; padding-bottom: 10px; }
-  h2 { color: #58a6ff; margin-top: 30px; border-left: 4px solid #58a6ff; padding-left: 10px; }
+  h1 { color: var(--accent); border-bottom: 2px solid var(--border); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  h2 { color: var(--accent); margin-top: 30px; border-left: 4px solid var(--accent); padding-left: 10px; }
   .card {
-    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-    padding: 15px; margin: 10px 0;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 15px; margin: 10px 0; transition: all 0.3s;
   }
-  .stats { display: flex; gap: 15px; flex-wrap: wrap; margin: 15px 0; }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin: 15px 0; }
   .stat-box {
-    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-    padding: 15px 20px; min-width: 120px; text-align: center;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 15px; text-align: center; transition: all 0.2s;
   }
-  .stat-box .num { font-size: 28px; font-weight: bold; color: #58a6ff; }
-  .stat-box .label { font-size: 12px; color: #8b949e; margin-top: 5px; }
+  .stat-box:hover { border-color: var(--accent); }
+  .stat-box .num { font-size: 28px; font-weight: bold; color: var(--accent); }
+  .stat-box .label { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .stat-box.top .num { color: var(--top-color); }
+  .stat-box.bot .num { color: var(--bot-color); }
+  .delta { font-size: 12px; margin-left: 5px; }
+  .delta.up { color: var(--top-color); }
+  .delta.down { color: var(--bot-color); }
+  
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+  
+  .chart-container { position: relative; height: 250px; }
+  .donut-container { position: relative; height: 200px; }
+  
   .badge {
     display: inline-block; padding: 4px 10px; margin: 3px;
-    background: #21262d; border-radius: 12px; font-size: 13px;
-    border: 1px solid #30363d;
+    background: var(--bg); border-radius: 12px; font-size: 13px;
+    border: 1px solid var(--border);
   }
-  table.table {
-    width: 100%; border-collapse: collapse; font-size: 13px;
-    margin-top: 10px;
-  }
+  table.table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
   table.table th {
-    background: #21262d; color: #58a6ff; padding: 10px;
-    text-align: left; border-bottom: 2px solid #30363d;
-    position: sticky; top: 0;
+    background: linear-gradient(180deg, var(--card) 0%, var(--bg) 100%);
+    color: var(--accent); padding: 10px; text-align: left;
+    border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10;
+    white-space: nowrap;
   }
-  table.table td {
-    padding: 8px 10px; border-bottom: 1px solid #21262d;
+  table.table td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.table tr { transition: background 0.2s; cursor: pointer; }
+  
+  tr.top-row { background: var(--top-bg); }
+  tr.top-row:hover { background: var(--top-hover); }
+  tr.bot-row { background: var(--bot-bg); }
+  tr.bot-row:hover { background: var(--bot-hover); }
+  
+  .strength-bar {
+    position: relative; width: 60px; height: 18px; background: var(--bg);
+    border-radius: 9px; overflow: hidden; display: inline-block;
   }
-  table.table tr:hover { background: #1c2128; }
+  .strength-fill { position: absolute; left: 0; top: 0; bottom: 0; }
+  .strength-fill.strength-強 { background: #f85149; }
+  .strength-fill.strength-中 { background: #d29922; }
+  .strength-fill.strength-弱 { background: #6e7681; }
+  .strength-text {
+    position: relative; z-index: 1; font-size: 11px; font-weight: bold;
+    color: white; line-height: 18px; padding-left: 6px;
+  }
+  
+  .controls {
+    display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;
+    padding: 15px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    align-items: center;
+  }
+  .btn {
+    padding: 8px 14px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); border-radius: 6px; cursor: pointer;
+    font-size: 13px; transition: all 0.2s;
+  }
+  .btn:hover { background: var(--border); }
+  .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .search-input {
+    padding: 8px 14px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); border-radius: 6px; font-size: 13px; min-width: 200px;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  .label-text { color: var(--muted); font-size: 13px; }
+  
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .bar-label { width: 80px; font-size: 13px; font-weight: bold; }
+  .bar-track { flex: 1; height: 20px; background: var(--bg); border-radius: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, #1f6feb 100%); border-radius: 10px; }
+  .bar-count { width: 40px; text-align: right; font-size: 13px; color: var(--muted); }
+  
+  .resonance-item { padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--border); }
+  .resonance-item:last-child { border-bottom: none; }
+  
+  .keylevel { margin: 15px 0; }
+  .keylevel-bar {
+    position: relative; height: 30px; background: linear-gradient(90deg, var(--bot-color) 0%, var(--bg) 50%, var(--top-color) 100%);
+    border-radius: 15px; overflow: visible;
+  }
+  .keylevel-marker {
+    position: absolute; top: -5px; width: 4px; height: 40px;
+    background: white; border-radius: 2px; box-shadow: 0 0 8px rgba(255,255,255,0.8);
+  }
+  .keylevel-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  
+  .modal {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    justify-content: center; align-items: center; padding: 20px;
+  }
+  .modal.active { display: flex; }
+  .modal-content {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    max-width: 500px; width: 100%; padding: 25px; position: relative;
+    max-height: 80vh; overflow-y: auto;
+  }
+  .modal-close {
+    position: absolute; top: 15px; right: 15px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    width: 30px; height: 30px; border-radius: 50%; font-size: 16px;
+  }
+  .modal-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .modal-row:last-child { border-bottom: none; }
+  .modal-label { color: var(--muted); }
+  .modal-value { font-weight: bold; }
+  
   .footer {
-    margin-top: 40px; text-align: center; color: #8b949e;
-    font-size: 12px; border-top: 1px solid #30363d; padding-top: 20px;
+    margin-top: 40px; text-align: center; color: var(--muted);
+    font-size: 12px; border-top: 1px solid var(--border); padding-top: 20px;
   }
-  .scroll { overflow-x: auto; max-height: 600px; overflow-y: auto; }
+  .scroll { overflow-x: auto; max-height: 700px; overflow-y: auto; }
+  
+  /* 手機優化 */
+  @media (max-width: 768px) {
+    body { padding: 10px; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 16px; }
+    .stat-box .num { font-size: 22px; }
+    .controls { flex-direction: column; align-items: stretch; }
+    .search-input { min-width: auto; width: 100%; }
+    table.table { font-size: 12px; }
+    table.table th, table.table td { padding: 6px 8px; }
+  }
 </style>
 </head>
 <body>
 <div class="container">
 
-<h1>⚡ 0DTE Radar Dashboard</h1>
-<p style="color:#8b949e;">最後更新：2026-10-08 13:03 HKT</p>
+<h1>
+  <span>⚡ 0DTE Radar Dashboard</span>
+  <button class="btn" onclick="toggleTheme()" id="theme-btn">🌙</button>
+</h1>
+<p style="color:var(--muted);">最後更新：2026-10-08 13:11 HKT</p>
 
+<!-- 統計數字 -->
 <div class="stats">
   <div class="stat-box">
     <div class="num">44</div>
@@ -65,1392 +185,346 @@
     <div class="num">44</div>
     <div class="label">今日訊號</div>
   </div>
+  <div class="stat-box top">
+    <div class="num">25</div>
+    <div class="label">🔴 頂背離</div>
+  </div>
+  <div class="stat-box bot">
+    <div class="num">19</div>
+    <div class="label">🟢 底背離</div>
+  </div>
+  <div class="stat-box">
+    <div class="num">15</div>
+    <div class="label">🔥 強訊號</div>
+  </div>
 </div>
 
-<h2>📊 強度分佈（最近 30 日）</h2>
+<!-- 今日 vs 昨日 -->
 <div class="card">
-  <span class='badge'>強: 15</span><span class='badge'>中: 14</span><span class='badge'>弱: 15</span>
+  <strong>📈 今日 vs 昨日：</strong>
+  總訊號 44 
+  <span class="delta up">
+    (+44)
+  </span>
+  | 昨日 0
 </div>
 
-<h2>📈 熱門標的 TOP 5（最近 30 日）</h2>
+<!-- 圖表區 -->
+<div class="grid-2">
+  <div class="card">
+    <h2 style="margin-top:0;">📊 歷史趨勢（30 日）</h2>
+    <div class="chart-container"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">📊 強度分佈（今日）</h2>
+    <div class="donut-container"><canvas id="donutChart"></canvas></div>
+  </div>
+</div>
+
+<!-- Top 5 -->
 <div class="card">
-  <span class='badge'>NQ=F: 7</span><span class='badge'>YM=F: 7</span><span class='badge'>DX-Y.NYB: 6</span><span class='badge'>ES=F: 4</span><span class='badge'>XLU: 4</span>
+  <h2 style="margin-top:0;">📈 Top 5 標的（30 日）</h2>
+  
+        <div class="bar-row">
+          <span class="bar-label">NQ=F</span>
+          <div class="bar-track"><div class="bar-fill" style="width:100%;"></div></div>
+          <span class="bar-count">7</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">YM=F</span>
+          <div class="bar-track"><div class="bar-fill" style="width:100%;"></div></div>
+          <span class="bar-count">7</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">DX-Y.NYB</span>
+          <div class="bar-track"><div class="bar-fill" style="width:85%;"></div></div>
+          <span class="bar-count">6</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">ES=F</span>
+          <div class="bar-track"><div class="bar-fill" style="width:57%;"></div></div>
+          <span class="bar-count">4</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">XLU</span>
+          <div class="bar-track"><div class="bar-fill" style="width:57%;"></div></div>
+          <span class="bar-count">4</span>
+        </div>
 </div>
 
+<!-- 共振 -->
+<div class="card">
+  <h2 style="margin-top:0;">⭐ 多週期共振</h2>
+  <div class="resonance-item">⭐⭐⭐ 納斯達克100期貨 (NQ=F) | M+D+4H 頂背離</div><div class="resonance-item">⭐⭐ 標普500期貨 (ES=F) | W+4H 頂背離</div><div class="resonance-item">⭐⭐ 美元指數 (DX-Y.NYB) | W+4H 頂背離</div><div class="resonance-item">⭐⭐ 通訊服務ETF (XLC) | W+4H 底背離</div><div class="resonance-item">⭐⭐ 道瓊斯工業期貨 (YM=F) | D+4H 底背離</div>
+</div>
+
+<!-- NQ Key Levels -->
+<div class="card">
+  <h2 style="margin-top:0;">📍 NQ 關鍵位</h2>
+  <div class="keylevel">
+    <div class="keylevel-bar" id="nq-bar"></div>
+    <div class="keylevel-labels">
+      <span>5日低 30,760</span>
+      <span>現價 31,398</span>
+      <span>5日高 31,616</span>
+    </div>
+  </div>
+</div>
+
+<!-- 今日訊號 -->
 <h2>🔥 今日訊號</h2>
-<div class="card scroll">
-  <table class="dataframe table">
-  <thead>
-    <tr style="text-align: right;">
-      <th>日期</th>
-      <th>標的</th>
-      <th>中文名</th>
-      <th>週期</th>
-      <th>方向</th>
-      <th>指標</th>
-      <th>前高/低</th>
-      <th>現價</th>
-      <th>價變化%</th>
-      <th>指標變化%</th>
-      <th>強度</th>
-      <th>lookback</th>
-      <th>tag</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-7.58</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-7.58</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-12.94</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-12.94</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>7805.00</td>
-      <td>7777.25</td>
-      <td>-0.36</td>
-      <td>-27.14</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>7805.00</td>
-      <td>7777.25</td>
-      <td>-0.36</td>
-      <td>-12.66</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>^VIX</td>
-      <td>恐慌指數</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>16.45</td>
-      <td>16.34</td>
-      <td>-0.67</td>
-      <td>-171.75</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>^VIX</td>
-      <td>恐慌指數</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>16.45</td>
-      <td>16.34</td>
-      <td>-0.67</td>
-      <td>-53.30</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>CL=F</td>
-      <td>原油期貨</td>
-      <td>W</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>91.48</td>
-      <td>91.11</td>
-      <td>-0.40</td>
-      <td>102.19</td>
-      <td>強</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>101.47</td>
-      <td>101.93</td>
-      <td>0.45</td>
-      <td>-34.20</td>
-      <td>中</td>
-      <td>long</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>IGV</td>
-      <td>軟件服務ETF</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>109.50</td>
-      <td>108.43</td>
-      <td>-0.98</td>
-      <td>-8.84</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>IGV</td>
-      <td>軟件服務ETF</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>109.50</td>
-      <td>108.43</td>
-      <td>-0.98</td>
-      <td>-21.36</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLC</td>
-      <td>通訊服務ETF</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>111.09</td>
-      <td>110.97</td>
-      <td>-0.11</td>
-      <td>-6.87</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLC</td>
-      <td>通訊服務ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>110.45</td>
-      <td>110.32</td>
-      <td>-0.11</td>
-      <td>20.48</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLF</td>
-      <td>金融板塊ETF</td>
-      <td>M</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>53.42</td>
-      <td>53.40</td>
-      <td>-0.04</td>
-      <td>25.03</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLF</td>
-      <td>金融板塊ETF</td>
-      <td>M</td>
-      <td>底</td>
-      <td>J</td>
-      <td>53.42</td>
-      <td>53.40</td>
-      <td>-0.04</td>
-      <td>35.76</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLI</td>
-      <td>工業板塊ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>169.29</td>
-      <td>169.95</td>
-      <td>0.39</td>
-      <td>133.86</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLI</td>
-      <td>工業板塊ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>169.29</td>
-      <td>169.95</td>
-      <td>0.39</td>
-      <td>133.86</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>39.51</td>
-      <td>39.83</td>
-      <td>0.81</td>
-      <td>144.08</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>39.51</td>
-      <td>39.83</td>
-      <td>0.81</td>
-      <td>144.08</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>31483.25</td>
-      <td>31395.75</td>
-      <td>-0.28</td>
-      <td>-6.90</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>31483.25</td>
-      <td>31395.75</td>
-      <td>-0.28</td>
-      <td>-6.90</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>31430.00</td>
-      <td>31395.75</td>
-      <td>-0.11</td>
-      <td>-18.61</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>7852.75</td>
-      <td>7850.50</td>
-      <td>-0.03</td>
-      <td>-21.12</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>J</td>
-      <td>7843.50</td>
-      <td>7850.50</td>
-      <td>0.09</td>
-      <td>113.74</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>28.82</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>28.82</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>640.71</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>640.71</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>51467.00</td>
-      <td>51398.00</td>
-      <td>-0.13</td>
-      <td>-429.32</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51395.00</td>
-      <td>51398.00</td>
-      <td>0.01</td>
-      <td>25.98</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51395.00</td>
-      <td>51398.00</td>
-      <td>0.01</td>
-      <td>25.98</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>GC=F</td>
-      <td>黃金期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>4140.70</td>
-      <td>4158.20</td>
-      <td>0.42</td>
-      <td>56.01</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>GC=F</td>
-      <td>黃金期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>4140.70</td>
-      <td>4158.20</td>
-      <td>0.42</td>
-      <td>56.01</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>101.83</td>
-      <td>102.24</td>
-      <td>0.40</td>
-      <td>21.55</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>102.50</td>
-      <td>102.24</td>
-      <td>-0.25</td>
-      <td>-52.64</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>102.36</td>
-      <td>102.24</td>
-      <td>-0.12</td>
-      <td>-9.86</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>102.50</td>
-      <td>102.24</td>
-      <td>-0.25</td>
-      <td>-13.40</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>102.36</td>
-      <td>102.24</td>
-      <td>-0.12</td>
-      <td>-35.80</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLC</td>
-      <td>通訊服務ETF</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>111.08</td>
-      <td>111.30</td>
-      <td>0.19</td>
-      <td>10.29</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLV</td>
-      <td>醫療保健ETF</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>168.42</td>
-      <td>168.81</td>
-      <td>0.23</td>
-      <td>-142.45</td>
-      <td>強</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLV</td>
-      <td>醫療保健ETF</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>168.42</td>
-      <td>168.81</td>
-      <td>0.23</td>
-      <td>-27.01</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>41.21</td>
-      <td>41.17</td>
-      <td>-0.10</td>
-      <td>-6.43</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>41.21</td>
-      <td>41.17</td>
-      <td>-0.10</td>
-      <td>-6.43</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-  </tbody>
-</table>
+
+<div class="controls">
+  <span class="label-text">篩選：</span>
+  <button class="btn active" data-filter="all" onclick="filterRows('all', this)">全部</button>
+  <button class="btn" data-filter="top" onclick="filterRows('top', this)">🔴 頂</button>
+  <button class="btn" data-filter="bot" onclick="filterRows('bot', this)">🟢 底</button>
+  <button class="btn" data-filter="strong" onclick="filterRows('strong', this)">🔥 強</button>
+  
+  <span class="label-text" style="margin-left:20px;">排序：</span>
+  <button class="btn" onclick="sortBy('strength', this)">按強度</button>
+  <button class="btn" onclick="sortBy('ticker', this)">按標的</button>
+  
+  <input type="text" class="search-input" placeholder="🔎 搜尋（可逗號分隔）..." oninput="searchRows(this.value)">
+  
+  <button class="btn" onclick="exportCSV()" style="margin-left:auto;">📥 匯出 CSV</button>
 </div>
 
-<h2>📜 歷史紀錄（最近 30 日）</h2>
 <div class="card scroll">
-  <table class="dataframe table">
-  <thead>
-    <tr style="text-align: right;">
-      <th>日期</th>
-      <th>標的</th>
-      <th>中文名</th>
-      <th>週期</th>
-      <th>方向</th>
-      <th>指標</th>
-      <th>前高/低</th>
-      <th>現價</th>
-      <th>價變化%</th>
-      <th>指標變化%</th>
-      <th>強度</th>
-      <th>lookback</th>
-      <th>tag</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-7.58</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-7.58</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-12.94</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>30523.50</td>
-      <td>30698.75</td>
-      <td>0.57</td>
-      <td>-12.94</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>7805.00</td>
-      <td>7777.25</td>
-      <td>-0.36</td>
-      <td>-27.14</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>7805.00</td>
-      <td>7777.25</td>
-      <td>-0.36</td>
-      <td>-12.66</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>^VIX</td>
-      <td>恐慌指數</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>16.45</td>
-      <td>16.34</td>
-      <td>-0.67</td>
-      <td>-171.75</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>^VIX</td>
-      <td>恐慌指數</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>16.45</td>
-      <td>16.34</td>
-      <td>-0.67</td>
-      <td>-53.30</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>CL=F</td>
-      <td>原油期貨</td>
-      <td>W</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>91.48</td>
-      <td>91.11</td>
-      <td>-0.40</td>
-      <td>102.19</td>
-      <td>強</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>101.47</td>
-      <td>101.93</td>
-      <td>0.45</td>
-      <td>-34.20</td>
-      <td>中</td>
-      <td>long</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>IGV</td>
-      <td>軟件服務ETF</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>109.50</td>
-      <td>108.43</td>
-      <td>-0.98</td>
-      <td>-8.84</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>IGV</td>
-      <td>軟件服務ETF</td>
-      <td>W</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>109.50</td>
-      <td>108.43</td>
-      <td>-0.98</td>
-      <td>-21.36</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLC</td>
-      <td>通訊服務ETF</td>
-      <td>M</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>111.09</td>
-      <td>110.97</td>
-      <td>-0.11</td>
-      <td>-6.87</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLC</td>
-      <td>通訊服務ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>110.45</td>
-      <td>110.32</td>
-      <td>-0.11</td>
-      <td>20.48</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLF</td>
-      <td>金融板塊ETF</td>
-      <td>M</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>53.42</td>
-      <td>53.40</td>
-      <td>-0.04</td>
-      <td>25.03</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLF</td>
-      <td>金融板塊ETF</td>
-      <td>M</td>
-      <td>底</td>
-      <td>J</td>
-      <td>53.42</td>
-      <td>53.40</td>
-      <td>-0.04</td>
-      <td>35.76</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新低</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLI</td>
-      <td>工業板塊ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>169.29</td>
-      <td>169.95</td>
-      <td>0.39</td>
-      <td>133.86</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLI</td>
-      <td>工業板塊ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>169.29</td>
-      <td>169.95</td>
-      <td>0.39</td>
-      <td>133.86</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>39.51</td>
-      <td>39.83</td>
-      <td>0.81</td>
-      <td>144.08</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>W</td>
-      <td>底</td>
-      <td>J</td>
-      <td>39.51</td>
-      <td>39.83</td>
-      <td>0.81</td>
-      <td>144.08</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>31483.25</td>
-      <td>31395.75</td>
-      <td>-0.28</td>
-      <td>-6.90</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>31483.25</td>
-      <td>31395.75</td>
-      <td>-0.28</td>
-      <td>-6.90</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>NQ=F</td>
-      <td>納斯達克100期貨</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>31430.00</td>
-      <td>31395.75</td>
-      <td>-0.11</td>
-      <td>-18.61</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>7852.75</td>
-      <td>7850.50</td>
-      <td>-0.03</td>
-      <td>-21.12</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>ES=F</td>
-      <td>標普500期貨</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>J</td>
-      <td>7843.50</td>
-      <td>7850.50</td>
-      <td>0.09</td>
-      <td>113.74</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>28.82</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>28.82</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>640.71</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51241.00</td>
-      <td>51398.00</td>
-      <td>0.31</td>
-      <td>640.71</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>51467.00</td>
-      <td>51398.00</td>
-      <td>-0.13</td>
-      <td>-429.32</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51395.00</td>
-      <td>51398.00</td>
-      <td>0.01</td>
-      <td>25.98</td>
-      <td>中</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>YM=F</td>
-      <td>道瓊斯工業期貨</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>J</td>
-      <td>51395.00</td>
-      <td>51398.00</td>
-      <td>0.01</td>
-      <td>25.98</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>GC=F</td>
-      <td>黃金期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>4140.70</td>
-      <td>4158.20</td>
-      <td>0.42</td>
-      <td>56.01</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>GC=F</td>
-      <td>黃金期貨</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>4140.70</td>
-      <td>4158.20</td>
-      <td>0.42</td>
-      <td>56.01</td>
-      <td>強</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>D</td>
-      <td>底</td>
-      <td>J</td>
-      <td>101.83</td>
-      <td>102.24</td>
-      <td>0.40</td>
-      <td>21.55</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>102.50</td>
-      <td>102.24</td>
-      <td>-0.25</td>
-      <td>-52.64</td>
-      <td>強</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>102.36</td>
-      <td>102.24</td>
-      <td>-0.12</td>
-      <td>-9.86</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>102.50</td>
-      <td>102.24</td>
-      <td>-0.25</td>
-      <td>-13.40</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>DX-Y.NYB</td>
-      <td>美元指數</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>102.36</td>
-      <td>102.24</td>
-      <td>-0.12</td>
-      <td>-35.80</td>
-      <td>中</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLC</td>
-      <td>通訊服務ETF</td>
-      <td>4H</td>
-      <td>底</td>
-      <td>DIF</td>
-      <td>111.08</td>
-      <td>111.30</td>
-      <td>0.19</td>
-      <td>10.29</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙底</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLV</td>
-      <td>醫療保健ETF</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>DIF</td>
-      <td>168.42</td>
-      <td>168.81</td>
-      <td>0.23</td>
-      <td>-142.45</td>
-      <td>強</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLV</td>
-      <td>醫療保健ETF</td>
-      <td>D</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>168.42</td>
-      <td>168.81</td>
-      <td>0.23</td>
-      <td>-27.01</td>
-      <td>中</td>
-      <td>short</td>
-      <td>新高</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>41.21</td>
-      <td>41.17</td>
-      <td>-0.10</td>
-      <td>-6.43</td>
-      <td>弱</td>
-      <td>long</td>
-      <td>雙頂</td>
-    </tr>
-    <tr>
-      <td>2026-10-08</td>
-      <td>XLU</td>
-      <td>公用事業ETF</td>
-      <td>4H</td>
-      <td>頂</td>
-      <td>J</td>
-      <td>41.21</td>
-      <td>41.17</td>
-      <td>-0.10</td>
-      <td>-6.43</td>
-      <td>弱</td>
-      <td>short</td>
-      <td>雙頂</td>
-    </tr>
-  </tbody>
-</table>
+  <table class="table" id="today-table">
+    <thead><tr><th>日期</th><th>標的</th><th>中文名</th><th>週期</th><th>方向</th><th>指標</th><th>前高/低</th><th>現價</th><th>價變化%</th><th>指標變化%</th><th>強度</th><th>長/短</th><th>型態</th></tr></thead>
+    <tbody><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "MACD-DIF", "prev_price": "30523.5", "current_price": "30698.75", "price_change": "0.57", "ind_change": "-7.58", "strength": "弱", "lookback": "長", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>M</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>30523.5</td><td>30698.75</td><td>0.57</td><td>-7.58</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "MACD-DIF", "prev_price": "30523.5", "current_price": "30698.75", "price_change": "0.57", "ind_change": "-7.58", "strength": "弱", "lookback": "短", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>M</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>30523.5</td><td>30698.75</td><td>0.57</td><td>-7.58</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "KDJ-J", "prev_price": "30523.5", "current_price": "30698.75", "price_change": "0.57", "ind_change": "-12.94", "strength": "弱", "lookback": "長", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>M</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>30523.5</td><td>30698.75</td><td>0.57</td><td>-12.94</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "KDJ-J", "prev_price": "30523.5", "current_price": "30698.75", "price_change": "0.57", "ind_change": "-12.94", "strength": "弱", "lookback": "短", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>M</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>30523.5</td><td>30698.75</td><td>0.57</td><td>-12.94</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-08", "level": "W", "direction": "頂", "ind": "MACD-DIF", "prev_price": "7805.0", "current_price": "7777.25", "price_change": "-0.36", "ind_change": "-27.14", "strength": "中", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>ES=F</td><td>標普500期貨</td><td>W</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>7805.0</td><td>7777.25</td><td>-0.36</td><td>-27.14</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-08", "level": "W", "direction": "頂", "ind": "KDJ-J", "prev_price": "7805.0", "current_price": "7777.25", "price_change": "-0.36", "ind_change": "-12.66", "strength": "弱", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>ES=F</td><td>標普500期貨</td><td>W</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>7805.0</td><td>7777.25</td><td>-0.36</td><td>-12.66</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-ticker="^VIX" data-json='{"ticker": "^VIX", "name": "恐慌指數", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "MACD-DIF", "prev_price": "16.45", "current_price": "16.34", "price_change": "-0.67", "ind_change": "-171.75", "strength": "強", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>^VIX</td><td>恐慌指數</td><td>M</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>16.45</td><td>16.34</td><td>-0.67</td><td>-171.75</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-ticker="^VIX" data-json='{"ticker": "^VIX", "name": "恐慌指數", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "KDJ-J", "prev_price": "16.45", "current_price": "16.34", "price_change": "-0.67", "ind_change": "-53.3", "strength": "強", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>^VIX</td><td>恐慌指數</td><td>M</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>16.45</td><td>16.34</td><td>-0.67</td><td>-53.3</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙頂</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="CL=F" data-json='{"ticker": "CL=F", "name": "原油期貨", "date": "2026-10-08", "level": "W", "direction": "底", "ind": "MACD-DIF", "prev_price": "91.48", "current_price": "91.11", "price_change": "-0.4", "ind_change": "102.19", "strength": "強", "lookback": "短", "tag": "新低"}' onclick="showDetail(this)"><td>2026-10-08</td><td>CL=F</td><td>原油期貨</td><td>W</td><td>🟢 底 ▲</td><td>MACD-DIF</td><td>91.48</td><td>91.11</td><td>-0.4</td><td>102.19</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>新低</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-08", "level": "W", "direction": "頂", "ind": "MACD-DIF", "prev_price": "101.47", "current_price": "101.93", "price_change": "0.45", "ind_change": "-34.2", "strength": "中", "lookback": "長", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>DX-Y.NYB</td><td>美元指數</td><td>W</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>101.47</td><td>101.93</td><td>0.45</td><td>-34.2</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="IGV" data-json='{"ticker": "IGV", "name": "軟件服務ETF", "date": "2026-10-08", "level": "W", "direction": "頂", "ind": "MACD-DIF", "prev_price": "109.5", "current_price": "108.43", "price_change": "-0.98", "ind_change": "-8.84", "strength": "弱", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>IGV</td><td>軟件服務ETF</td><td>W</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>109.5</td><td>108.43</td><td>-0.98</td><td>-8.84</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="IGV" data-json='{"ticker": "IGV", "name": "軟件服務ETF", "date": "2026-10-08", "level": "W", "direction": "頂", "ind": "KDJ-J", "prev_price": "109.5", "current_price": "108.43", "price_change": "-0.98", "ind_change": "-21.36", "strength": "中", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>IGV</td><td>軟件服務ETF</td><td>W</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>109.5</td><td>108.43</td><td>-0.98</td><td>-21.36</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-08", "level": "M", "direction": "頂", "ind": "MACD-DIF", "prev_price": "111.09", "current_price": "110.97", "price_change": "-0.11", "ind_change": "-6.87", "strength": "弱", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLC</td><td>通訊服務ETF</td><td>M</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>111.09</td><td>110.97</td><td>-0.11</td><td>-6.87</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙頂</td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-08", "level": "W", "direction": "底", "ind": "MACD-DIF", "prev_price": "110.45", "current_price": "110.32", "price_change": "-0.11", "ind_change": "20.48", "strength": "中", "lookback": "短", "tag": "新低"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLC</td><td>通訊服務ETF</td><td>W</td><td>🟢 底 ▲</td><td>MACD-DIF</td><td>110.45</td><td>110.32</td><td>-0.11</td><td>20.48</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>新低</td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-ticker="XLF" data-json='{"ticker": "XLF", "name": "金融板塊ETF", "date": "2026-10-08", "level": "M", "direction": "底", "ind": "MACD-DIF", "prev_price": "53.42", "current_price": "53.4", "price_change": "-0.04", "ind_change": "25.03", "strength": "中", "lookback": "短", "tag": "新低"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLF</td><td>金融板塊ETF</td><td>M</td><td>🟢 底 ▲</td><td>MACD-DIF</td><td>53.42</td><td>53.4</td><td>-0.04</td><td>25.03</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>新低</td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-ticker="XLF" data-json='{"ticker": "XLF", "name": "金融板塊ETF", "date": "2026-10-08", "level": "M", "direction": "底", "ind": "KDJ-J", "prev_price": "53.42", "current_price": "53.4", "price_change": "-0.04", "ind_change": "35.76", "strength": "中", "lookback": "短", "tag": "新低"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLF</td><td>金融板塊ETF</td><td>M</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>53.42</td><td>53.4</td><td>-0.04</td><td>35.76</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>新低</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="XLI" data-json='{"ticker": "XLI", "name": "工業板塊ETF", "date": "2026-10-08", "level": "W", "direction": "底", "ind": "KDJ-J", "prev_price": "169.29", "current_price": "169.95", "price_change": "0.39", "ind_change": "133.86", "strength": "強", "lookback": "長", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLI</td><td>工業板塊ETF</td><td>W</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>169.29</td><td>169.95</td><td>0.39</td><td>133.86</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="XLI" data-json='{"ticker": "XLI", "name": "工業板塊ETF", "date": "2026-10-08", "level": "W", "direction": "底", "ind": "KDJ-J", "prev_price": "169.29", "current_price": "169.95", "price_change": "0.39", "ind_change": "133.86", "strength": "強", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLI</td><td>工業板塊ETF</td><td>W</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>169.29</td><td>169.95</td><td>0.39</td><td>133.86</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="XLU" data-json='{"ticker": "XLU", "name": "公用事業ETF", "date": "2026-10-08", "level": "W", "direction": "底", "ind": "KDJ-J", "prev_price": "39.51", "current_price": "39.83", "price_change": "0.81", "ind_change": "144.08", "strength": "強", "lookback": "長", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLU</td><td>公用事業ETF</td><td>W</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>39.51</td><td>39.83</td><td>0.81</td><td>144.08</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="XLU" data-json='{"ticker": "XLU", "name": "公用事業ETF", "date": "2026-10-08", "level": "W", "direction": "底", "ind": "KDJ-J", "prev_price": "39.51", "current_price": "39.83", "price_change": "0.81", "ind_change": "144.08", "strength": "強", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLU</td><td>公用事業ETF</td><td>W</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>39.51</td><td>39.83</td><td>0.81</td><td>144.08</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "D", "direction": "頂", "ind": "KDJ-J", "prev_price": "31483.25", "current_price": "31385.0", "price_change": "-0.31", "ind_change": "-7.63", "strength": "弱", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>D</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>31483.25</td><td>31385.0</td><td>-0.31</td><td>-7.63</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "D", "direction": "頂", "ind": "KDJ-J", "prev_price": "31483.25", "current_price": "31385.0", "price_change": "-0.31", "ind_change": "-7.63", "strength": "弱", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>D</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>31483.25</td><td>31385.0</td><td>-0.31</td><td>-7.63</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "MACD-DIF", "prev_price": "31430.0", "current_price": "31385.0", "price_change": "-0.14", "ind_change": "-20.43", "strength": "中", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>NQ=F</td><td>納斯達克100期貨</td><td>4H</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>31430.0</td><td>31385.0</td><td>-0.14</td><td>-20.43</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "MACD-DIF", "prev_price": "7852.75", "current_price": "7848.5", "price_change": "-0.05", "ind_change": "-22.91", "strength": "中", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>ES=F</td><td>標普500期貨</td><td>4H</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>7852.75</td><td>7848.5</td><td>-0.05</td><td>-22.91</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙頂</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-08", "level": "4H", "direction": "底", "ind": "KDJ-J", "prev_price": "7843.5", "current_price": "7848.5", "price_change": "0.06", "ind_change": "101.36", "strength": "強", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>ES=F</td><td>標普500期貨</td><td>4H</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>7843.5</td><td>7848.5</td><td>0.06</td><td>101.36</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "MACD-DIF", "prev_price": "51241.0", "current_price": "51375.0", "price_change": "0.26", "ind_change": "27.99", "strength": "中", "lookback": "長", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>D</td><td>🟢 底 ▲</td><td>MACD-DIF</td><td>51241.0</td><td>51375.0</td><td>0.26</td><td>27.99</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "MACD-DIF", "prev_price": "51241.0", "current_price": "51375.0", "price_change": "0.26", "ind_change": "27.99", "strength": "中", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>D</td><td>🟢 底 ▲</td><td>MACD-DIF</td><td>51241.0</td><td>51375.0</td><td>0.26</td><td>27.99</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "KDJ-J", "prev_price": "51241.0", "current_price": "51375.0", "price_change": "0.26", "ind_change": "620.43", "strength": "強", "lookback": "長", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>D</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>51241.0</td><td>51375.0</td><td>0.26</td><td>620.43</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "KDJ-J", "prev_price": "51241.0", "current_price": "51375.0", "price_change": "0.26", "ind_change": "620.43", "strength": "強", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>D</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>51241.0</td><td>51375.0</td><td>0.26</td><td>620.43</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "MACD-DIF", "prev_price": "51467.0", "current_price": "51375.0", "price_change": "-0.18", "ind_change": "-445.69", "strength": "強", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>4H</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>51467.0</td><td>51375.0</td><td>-0.18</td><td>-445.69</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙頂</td></tr><tr class="bot-row" data-direction="底" data-strength="弱" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "4H", "direction": "底", "ind": "KDJ-J", "prev_price": "51395.0", "current_price": "51375.0", "price_change": "-0.04", "ind_change": "9.59", "strength": "弱", "lookback": "長", "tag": "新低"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>4H</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>51395.0</td><td>51375.0</td><td>-0.04</td><td>9.59</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>新低</td></tr><tr class="bot-row" data-direction="底" data-strength="弱" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-08", "level": "4H", "direction": "底", "ind": "KDJ-J", "prev_price": "51395.0", "current_price": "51375.0", "price_change": "-0.04", "ind_change": "9.59", "strength": "弱", "lookback": "短", "tag": "新低"}' onclick="showDetail(this)"><td>2026-10-08</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>4H</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>51395.0</td><td>51375.0</td><td>-0.04</td><td>9.59</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>新低</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="GC=F" data-json='{"ticker": "GC=F", "name": "黃金期貨", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "KDJ-J", "prev_price": "4140.7", "current_price": "4156.5", "price_change": "0.38", "ind_change": "52.62", "strength": "強", "lookback": "長", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>GC=F</td><td>黃金期貨</td><td>D</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>4140.7</td><td>4156.5</td><td>0.38</td><td>52.62</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-ticker="GC=F" data-json='{"ticker": "GC=F", "name": "黃金期貨", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "KDJ-J", "prev_price": "4140.7", "current_price": "4156.5", "price_change": "0.38", "ind_change": "52.62", "strength": "強", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>GC=F</td><td>黃金期貨</td><td>D</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>4140.7</td><td>4156.5</td><td>0.38</td><td>52.62</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-08", "level": "D", "direction": "底", "ind": "KDJ-J", "prev_price": "101.83", "current_price": "102.24", "price_change": "0.41", "ind_change": "21.87", "strength": "中", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>DX-Y.NYB</td><td>美元指數</td><td>D</td><td>🟢 底 ▲</td><td>KDJ-J</td><td>101.83</td><td>102.24</td><td>0.41</td><td>21.87</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙底</td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "MACD-DIF", "prev_price": "102.5", "current_price": "102.24", "price_change": "-0.25", "ind_change": "-52.38", "strength": "強", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>102.5</td><td>102.24</td><td>-0.25</td><td>-52.38</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "MACD-DIF", "prev_price": "102.36", "current_price": "102.24", "price_change": "-0.12", "ind_change": "-9.36", "strength": "弱", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>102.36</td><td>102.24</td><td>-0.12</td><td>-9.36</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "KDJ-J", "prev_price": "102.5", "current_price": "102.24", "price_change": "-0.25", "ind_change": "-12.8", "strength": "弱", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>102.5</td><td>102.24</td><td>-0.25</td><td>-12.8</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "KDJ-J", "prev_price": "102.36", "current_price": "102.24", "price_change": "-0.12", "ind_change": "-35.36", "strength": "中", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>102.36</td><td>102.24</td><td>-0.12</td><td>-35.36</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙頂</td></tr><tr class="bot-row" data-direction="底" data-strength="弱" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-08", "level": "4H", "direction": "底", "ind": "MACD-DIF", "prev_price": "111.08", "current_price": "111.3", "price_change": "0.19", "ind_change": "10.29", "strength": "弱", "lookback": "短", "tag": "雙底"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLC</td><td>通訊服務ETF</td><td>4H</td><td>🟢 底 ▲</td><td>MACD-DIF</td><td>111.08</td><td>111.3</td><td>0.19</td><td>10.29</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙底</td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-ticker="XLV" data-json='{"ticker": "XLV", "name": "醫療保健ETF", "date": "2026-10-08", "level": "D", "direction": "頂", "ind": "MACD-DIF", "prev_price": "168.42", "current_price": "168.81", "price_change": "0.23", "ind_change": "-142.45", "strength": "強", "lookback": "短", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLV</td><td>醫療保健ETF</td><td>D</td><td>🔴 頂 ▼</td><td>MACD-DIF</td><td>168.42</td><td>168.81</td><td>0.23</td><td>-142.45</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-ticker="XLV" data-json='{"ticker": "XLV", "name": "醫療保健ETF", "date": "2026-10-08", "level": "D", "direction": "頂", "ind": "KDJ-J", "prev_price": "168.42", "current_price": "168.81", "price_change": "0.23", "ind_change": "-27.01", "strength": "中", "lookback": "短", "tag": "新高"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLV</td><td>醫療保健ETF</td><td>D</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>168.42</td><td>168.81</td><td>0.23</td><td>-27.01</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>新高</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="XLU" data-json='{"ticker": "XLU", "name": "公用事業ETF", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "KDJ-J", "prev_price": "41.21", "current_price": "41.17", "price_change": "-0.1", "ind_change": "-6.43", "strength": "弱", "lookback": "長", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLU</td><td>公用事業ETF</td><td>4H</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>41.21</td><td>41.17</td><td>-0.1</td><td>-6.43</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-ticker="XLU" data-json='{"ticker": "XLU", "name": "公用事業ETF", "date": "2026-10-08", "level": "4H", "direction": "頂", "ind": "KDJ-J", "prev_price": "41.21", "current_price": "41.17", "price_change": "-0.1", "ind_change": "-6.43", "strength": "弱", "lookback": "短", "tag": "雙頂"}' onclick="showDetail(this)"><td>2026-10-08</td><td>XLU</td><td>公用事業ETF</td><td>4H</td><td>🔴 頂 ▼</td><td>KDJ-J</td><td>41.21</td><td>41.17</td><td>-0.1</td><td>-6.43</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙頂</td></tr></tbody>
+  </table>
 </div>
 
 <div class="footer">
-  ⚡ Radar V18.0 | Powered by GitHub Actions + GitHub Pages
+  ⚡ Radar V18.3 | Powered by GitHub Actions + GitHub Pages
 </div>
 
 </div>
+
+<!-- Modal -->
+<div class="modal" id="modal" onclick="if(event.target===this) closeModal()">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h2 id="modal-title" style="margin-top:0;"></h2>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ===== 主題切換 =====
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'dark' ? '🌙' : '☀️';
+  localStorage.setItem('theme', next);
+}
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    document.getElementById('theme-btn').textContent = saved === 'dark' ? '🌙' : '☀️';
+  }
+})();
+
+// ===== 篩選 =====
+let currentFilter = 'all';
+
+function filterRows(type, btn) {
+  document.querySelectorAll('.controls .btn[data-filter]').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentFilter = type;
+  applyFilters();
+}
+
+function searchRows(query) {
+  applyFilters(query);
+}
+
+function applyFilters(query = '') {
+  const rows = document.querySelectorAll('#today-table tbody tr');
+  const queries = query.toLowerCase().split(',').map(q => q.trim()).filter(q => q);
+  
+  rows.forEach(row => {
+    if (!row.dataset.direction) return;
+    const direction = row.dataset.direction;
+    const strength = row.dataset.strength;
+    const ticker = (row.dataset.ticker || '').toLowerCase();
+    
+    let show = true;
+    if (currentFilter === 'top' && direction !== '頂') show = false;
+    if (currentFilter === 'bot' && direction !== '底') show = false;
+    if (currentFilter === 'strong' && strength !== '強') show = false;
+    
+    if (queries.length > 0) {
+      let matched = false;
+      for (const q of queries) {
+        if (ticker.includes(q)) { matched = true; break; }
+      }
+      if (!matched) show = false;
+    }
+    
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+function sortBy(key, btn) {
+  const tbody = document.querySelector('#today-table tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr[data-direction]'));
+  const strengthOrder = {'強': 1, '中': 2, '弱': 3};
+  
+  rows.sort((a, b) => {
+    if (key === 'strength') {
+      return (strengthOrder[a.dataset.strength] || 9) - (strengthOrder[b.dataset.strength] || 9);
+    } else if (key === 'ticker') {
+      return (a.dataset.ticker || '').localeCompare(b.dataset.ticker || '');
+    }
+    return 0;
+  });
+  
+  rows.forEach(r => tbody.appendChild(r));
+  document.querySelectorAll('.controls .btn:not([data-filter])').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+// ===== Modal =====
+function showDetail(row) {
+  try {
+    const data = JSON.parse(row.dataset.json.replace(/&#39;/g, "'"));
+    document.getElementById('modal-title').textContent = `${data.name} (${data.ticker})`;
+    const body = document.getElementById('modal-body');
+    
+    const dirIcon = data.direction === '頂' ? '🔴 頂背離' : '🟢 底背離';
+    const rows = [
+      ['日期', data.date],
+      ['週期', data.level],
+      ['方向', dirIcon],
+      ['指標', data.ind],
+      ['型態', data.tag],
+      ['長/短', data.lookback],
+      ['前高/低', data.prev_price],
+      ['現價', data.current_price],
+      ['價變化', data.price_change + '%'],
+      ['指標變化', data.ind_change + '%'],
+      ['強度', data.strength],
+    ];
+    
+    body.innerHTML = rows.map(([k, v]) => 
+      `<div class="modal-row"><span class="modal-label">${k}</span><span class="modal-value">${v}</span></div>`
+    ).join('');
+    
+    document.getElementById('modal').classList.add('active');
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+}
+
+// ===== 匯出 CSV =====
+function exportCSV() {
+  const rows = document.querySelectorAll('#today-table tbody tr[data-direction]');
+  const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
+  
+  let csv = '日期,標的,中文名,週期,方向,指標,前高/低,現價,價變化%,指標變化%,強度,長/短,型態\n';
+  visibleRows.forEach(r => {
+    const cells = Array.from(r.querySelectorAll('td')).map(td => {
+      let text = td.innerText.trim();
+      if (text.includes(',')) text = `"${text}"`;
+      return text;
+    });
+    csv += cells.join(',') + '\n';
+  });
+  
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `radar_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ===== 圖表 =====
+const trendData = {"dates": ["2026-10-08"], "top": [25], "bot": [19]};
+const strengthData = {"strong": 15, "medium": 13, "weak": 16};
+const nqData = {"high": 31616.5, "low": 30760.2, "current": 31397.8};
+
+const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+const chartTextColor = () => isDark() ? '#c9d1d9' : '#1f2328';
+const chartGridColor = () => isDark() ? '#30363d' : '#d0d7de';
+
+// 趨勢圖
+const trendCtx = document.getElementById('trendChart');
+if (trendCtx && trendData.dates.length > 0) {
+  new Chart(trendCtx, {
+    type: 'line',
+    data: {
+      labels: trendData.dates.map(d => d.slice(5)),
+      datasets: [
+        {
+          label: '頂背離',
+          data: trendData.top,
+          borderColor: '#f85149',
+          backgroundColor: 'rgba(248, 81, 73, 0.1)',
+          tension: 0.3, fill: true,
+        },
+        {
+          label: '底背離',
+          data: trendData.bot,
+          borderColor: '#3fb950',
+          backgroundColor: 'rgba(63, 185, 80, 0.1)',
+          tension: 0.3, fill: true,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: chartTextColor() } } },
+      scales: {
+        x: { ticks: { color: chartTextColor() }, grid: { color: chartGridColor() } },
+        y: { ticks: { color: chartTextColor() }, grid: { color: chartGridColor() }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// 甜甜圈圖
+const donutCtx = document.getElementById('donutChart');
+if (donutCtx) {
+  new Chart(donutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['強', '中', '弱'],
+      datasets: [{
+        data: [strengthData.strong, strengthData.medium, strengthData.weak],
+        backgroundColor: ['#f85149', '#d29922', '#6e7681'],
+        borderWidth: 2,
+        borderColor: chartGridColor(),
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { color: chartTextColor() } } }
+    }
+  });
+}
+
+// NQ Key Level
+const nqBar = document.getElementById('nq-bar');
+if (nqBar) {
+  const range = nqData.high - nqData.low;
+  const pct = ((nqData.current - nqData.low) / range) * 100;
+  const marker = document.createElement('div');
+  marker.className = 'keylevel-marker';
+  marker.style.left = pct + '%';
+  nqBar.appendChild(marker);
+}
+</script>
+
 </body>
 </html>
