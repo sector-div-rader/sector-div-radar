@@ -340,26 +340,6 @@ def scan_dual_lookback(t, info, lv):
         print(f"[scan_dual_lookback] {t} {lv}: {e}")
     return results
 
-        calc_df = calculate_custom_indicators(raw_df)
-        p_s = calc_df['Close']
-        params = DUAL_LB_CONFIG[lv]
-
-        for ind_name in ['DIF', 'J']:
-            r = check_dual_lookback(
-                p_s, calc_df[ind_name],
-                short_lb=params['short'], long_lb=params['long'],
-                price_tol=params['price_tol'], ind_drop_min=params['ind_drop']
-            )
-            for sig in r['long']:
-                sig['ind'] = ind_name; sig['lookback'] = 'long'
-                results.append(sig)
-            for sig in r['short']:
-                sig['ind'] = ind_name; sig['lookback'] = 'short'
-                results.append(sig)
-
-    except Exception as e:
-        print(f"[scan_dual_lookback] {t} {lv}: {e}")
-    return results
 
 # ==================== 財經日曆（FMP）====================
 
