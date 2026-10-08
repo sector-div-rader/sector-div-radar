@@ -293,8 +293,28 @@ def scan_dual_lookback(t, info, lv):
         if len(raw_df) < 40:
             return results
 
+        # M / W：去掉最新未完成 K
         if lv in ['M', 'W']:
             raw_df = raw_df.iloc[:-1]
+
+        # ★ V19.2：D / 4H 用即市價
+        if lv in ['D', '4H']:
+            try:
+                live = yf.Ticker(t).history(period='1d', interval='1m')
+                if not live.empty:
+                    live_price = float(live['Close'].iloc[-1])
+
+                    raw_df = raw_df.copy()
+                    raw_df.iloc[-1, raw_df.columns.get_loc('Close')] = live_price
+
+                    if live_price > raw_df.iloc[-1]['High']:
+                        raw_df.iloc[-1, raw_df.columns.get_loc('High')] = live_price
+                    if live_price < raw_df.iloc[-1]['Low']:
+                        raw_df.iloc[-1, raw_df.columns.get_loc('Low')] = live_price
+
+                    print(f"[live] {t} {lv}: {live_price:.2f}", flush=True)
+            except Exception as e:
+                print(f"[live price] {t} {lv} 失敗: {e}")
 
         if len(raw_df) < 40:
             return results
