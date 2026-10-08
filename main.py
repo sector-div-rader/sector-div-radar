@@ -616,26 +616,42 @@ def get_resonance(dual_mw, dual_dh):
 # ==================== 歷史紀錄 ====================
 
 def save_history(pivot_sigs, dual_mw, dual_dh):
-    """V18.0：寫入 history.csv"""
+    """V18.4：只儲存顯示嘅訊號（長優先，短只喺冇長先儲存）"""
     today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
     rows = []
     
+    # 按 (ticker, level, type, ind) 分組，每個 group 只儲存一個
+    grouped = {}
     for s in dual_mw + dual_dh:
-        strength, _ = get_strength(s['ind_change_pct'])
+        key = (s['ticker'], s['level'], s['type'], s['ind'])
+        grouped.setdefault(key, []).append(s)
+    
+    for key, sigs in grouped.items():
+        long_sigs = [s for s in sigs if s.get('lookback') == 'long']
+        short_sigs = [s for s in sigs if s.get('lookback') == 'short']
+        
+        if long_sigs:
+            target = long_sigs[0]
+        elif short_sigs:
+            target = short_sigs[0]
+        else:
+            continue
+        
+        strength, _ = get_strength(target['ind_change_pct'])
         rows.append({
             '日期': today,
-            '標的': s['ticker'],
-            '中文名': s['name'],
-            '週期': s['level'],
-            '方向': s['type'],
-            '指標': s['ind'],
-            '前高/低': round(s['prev_price'], 2),
-            '現價': round(s['current_price'], 2),
-            '價變化%': round(s['price_diff_pct'], 2),
-            '指標變化%': round(s['ind_change_pct'], 2),
+            '標的': target['ticker'],
+            '中文名': target['name'],
+            '週期': target['level'],
+            '方向': target['type'],
+            '指標': target['ind'],
+            '前高/低': round(target['prev_price'], 2),
+            '現價': round(target['current_price'], 2),
+            '價變化%': round(target['price_diff_pct'], 2),
+            '指標變化%': round(target['ind_change_pct'], 2),
             '強度': strength,
-            'lookback': s.get('lookback', 'long'),
-            'tag': s.get('tag', '')
+            'lookback': target.get('lookback', 'long'),
+            'tag': target.get('tag', '')
         })
     
     if rows:
