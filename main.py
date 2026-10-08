@@ -1,8 +1,8 @@
-# main.py - NQ 0DTE 全宏觀晨報 V17.6
+# main.py - NQ 0DTE 全宏觀晨報 V17.7
 # ============================================
-# V17.6 改動（相對 V17.5）：
-#   1. 4H 時間顯示：超過 24 小時 → N 日前
-#   2. [已確認] 格式統一（加 icon）
+# V17.7 改動（相對 V17.6）：
+#   1. 刪除「🎯 今晚戰術」句子
+#   2. 其他保持不變
 # ============================================
 
 import yfinance as yf
@@ -45,10 +45,9 @@ ALL_TARGETS = {
     'XLU':        {'name':'公用事業ETF',   'sticker':'💡','weight':2,'category':'DEFENSIVE'},
 }
 
-# ==================== 時間顯示（V17.6）====================
+# ==================== 時間顯示 ====================
 
 def time_ago(dist, lv):
-    """V17.6：4H 超過 24 小時顯示 N 日前"""
     if dist == 0:
         return '最新'
     if lv == 'M':
@@ -415,10 +414,8 @@ def cap_pct(pct):
     return f"{pct:+.2f}%"
 
 def fmt_pivot_signal(sig):
-    """V17.6：統一格式（加 icon）"""
     dist = sig['dist']
     time_str = time_ago(dist, sig['level'])
-    # 已確認 pivot 統一用 ⚡ icon
     icon = '⚡'
     return f"   {icon} [已確認] [{sig['level']}][{sig['ind']}] {sig['dir']}背離 ({time_str})"
 
@@ -558,22 +555,12 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
 
     sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    tech_4h_top = [s for s in dual_dh if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '頂']
-    tech_4h_bot = [s for s in dual_dh if s['ticker'] in TECH_TICKERS and s['level'] == '4H' and s['type'] == '底']
-
-    if tech_4h_top:
-        tactics = "🎯 今晚戰術：科技板塊 4H 頂背離！開盤拉高無力可搵 Put (嚴禁追 Call)。"
-    elif tech_4h_bot:
-        tactics = "🎯 今晚戰術：科技板塊 4H 底背離！開盤急跌可搵 Call。"
-    else:
-        tactics = "🟢 今晚戰術：無 4H 轉折訊號，結合 5m EMA 帶形態即市操作。"
-
     big_top = [s for s in pivot_sigs if s['level'] in ['M', 'W'] and s['dir'] == '頂']
     macro_bg = "🏛️ 大勢背景：週/月線大頂背離中！做 Put 爆發力大。" if big_top else \
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V17.6 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V17.7 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
 
@@ -591,8 +578,6 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
             L.append(block)
     else:
         L.append("   🟢 暫無顯著背離")
-    L.append("")
-    L.append("   " + tactics)
 
     L.extend([sep, "📊 隔夜與宏觀", sep, overnight_str])
     L.extend([sep, "📍 NQ 關鍵位", sep, levels_str])
@@ -634,7 +619,7 @@ def main():
         body = build_email_body(pivot_sigs, dual_dh, dual_mw)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V17.6] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V17.7] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
