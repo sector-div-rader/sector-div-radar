@@ -1,8 +1,11 @@
-# build_site.py - 生成 index.html Dashboard V18.4
+# build_site.py - 生成 index.html Dashboard V19.0
 # ============================================
-# V18.4 改動：
-#   1. 修「今日 vs 昨日」顯示（分開顯示 + 首次提示）
-#   2. 加「等幾日先有數據」提示（歷史趨勢圖）
+# V19.0 改動：
+#   1. 讀新 history.csv 格式（DIF + J 合併）
+#   2. 表格顯示 DIF / J 合併
+#   3. 按鈕加「多週期共振」「雙指標共振」
+#   4. 加財經日曆
+#   5. 加 5m EMA 帶
 # ============================================
 
 import os
@@ -29,15 +32,15 @@ def build_html():
         df['日期_str'] = df['日期'].astype(str).str[:10]
         today_df = df[df['日期_str'] == today]
         yesterday_df = df[df['日期_str'] == yesterday]
-        df['日期'] = pd.to_datetime(df['日期'], errors='coerce')
+        df['日期_dt'] = pd.to_datetime(df['日期'], errors='coerce')
         cutoff = datetime.now() - timedelta(days=30)
-        recent = df[df['日期'] >= cutoff]
+        recent = df[df['日期_dt'] >= cutoff]
     else:
         today_df = pd.DataFrame()
         yesterday_df = pd.DataFrame()
         recent = pd.DataFrame()
     
-    # ===== 統計數字 =====
+    # ===== 統計 =====
     total_signals = len(df) if not df.empty else 0
     today_count = len(today_df)
     yesterday_count = len(yesterday_df)
@@ -45,7 +48,6 @@ def build_html():
     today_bot = len(today_df[today_df['方向'] == '底']) if not today_df.empty else 0
     today_strong = len(today_df[today_df['強度'] == '強']) if not today_df.empty else 0
     
-    # 今日 vs 昨日
     diff_total = today_count - yesterday_count
     if yesterday_count == 0:
         diff_str = '首次'
@@ -54,18 +56,16 @@ def build_html():
         diff_str = f'{diff_total:+d}'
         diff_class = 'up' if diff_total > 0 else 'down' if diff_total < 0 else ''
     
-    # ===== 強度分佈（今日）=====
+    # 強度分佈
     strength_counts = {'強': 0, '中': 0, '弱': 0}
     if not today_df.empty and '強度' in today_df.columns:
         for s in strength_counts:
             strength_counts[s] = int((today_df['強度'] == s).sum())
     
-    # ===== 歷史趨勢（最近 30 日）=====
-    trend_dates = []
-    trend_top = []
-    trend_bot = []
-    if not recent.empty and '日期' in recent.columns:
-        grouped = recent.groupby(recent['日期'].dt.strftime('%Y-%m-%d'))
+    # 歷史趨勢
+    trend_dates, trend_top, trend_bot = [], [], []
+    if not recent.empty and '日期_dt' in recent.columns:
+        grouped = recent.groupby(recent['日期_dt'].dt.strftime('%Y-%m-%d'))
         for date, group in grouped:
             trend_dates.append(date)
             trend_top.append(int((group['方向'] == '頂').sum()))
@@ -75,7 +75,7 @@ def build_html():
         trend_top = [c[1] for c in combined]
         trend_bot = [c[2] for c in combined]
     
-    # ===== Top 5 標的 =====
+    # Top 5
     top_tickers = []
     if not recent.empty and '標的' in recent.columns:
         counts = recent['標的'].value_counts().head(5)
@@ -83,13 +83,14 @@ def build_html():
         for t, c in counts.items():
             top_tickers.append({'ticker': t, 'count': int(c), 'pct': int(c / max_count * 100)})
     
-    # ===== 多週期共振 =====
+    # 多週期共振
     resonance = {}
-    for _, row in recent.iterrows():
-        if pd.isna(row.get('日期')):
-            continue
-        key = (row['標的'], row['方向'])
-        resonance.setdefault(key, set()).add(row['週期'])
+    if not recent.empty:
+        for _, row in recent.iterrows():
+            if pd.isna(row.get('日期_dt')):
+                continue
+            key = (row['標的'], row['方向'])
+            resonance.setdefault(key, set()).add(row['週期'])
     
     resonance_list = []
     for (ticker, dir_), levels in resonance.items():
@@ -104,20 +105,18 @@ def build_html():
             resonance_list.append({'ticker': ticker, 'name': name, 'dir': dir_, 'levels': lvl_str, 'count': len(levels), 'stars': stars})
     resonance_list = sorted(resonance_list, key=lambda x: -x['count'])
     
-    # ===== 表格 rows =====
-    IND_NAME_MAP = {'DIF': 'MACD-DIF', 'J': 'KDJ-J'}
-    def rename_indicator(ind):
-        return IND_NAME_MAP.get(ind, ind)
-    
-    DISPLAY_COLS = ['日期_str', '標的', '中文名', '週期', '方向', '指標',
-                    '前高/低', '現價', '價變化%', '指標變化%', '強度',
-                    'lookback', 'tag']
+    # ===== 表格 =====
+    DISPLAY_COLS = ['日期_str', '標的', '中文名', '週期', '方向',
+                    '前高/低', '現價', '價變化%', 'DIF變化%', 'J變化%',
+                    'DIF有冇', 'J有冇', '強度', 'lookback', 'tag', '共振']
     
     HEADER_LABELS = {
-        '日期_str': '日期', '標的': '標的', '中文名': '中文名', '週期': '週期',
-        '方向': '方向', '指標': '指標', '前高/低': '前高/低', '現價': '現價',
-        '價變化%': '價變化%', '指標變化%': '指標變化%', '強度': '強度',
-        'lookback': '長/短', 'tag': '型態'
+        '日期_str': '日期', '標的': '標的', '中文名': '中文名',
+        '週期': '週期', '方向': '方向', '前高/低': '前高/低',
+        '現價': '現價', '價變化%': '價變化%',
+        'DIF變化%': 'DIF變化%', 'J變化%': 'J變化%',
+        'DIF有冇': 'DIF', 'J有冇': 'J',
+        '強度': '強度', 'lookback': '長/短', 'tag': '型態', '共振': '共振'
     }
     
     STRENGTH_PCT = {'強': 90, '中': 60, '弱': 30}
@@ -125,12 +124,14 @@ def build_html():
     def df_to_rows(d):
         if d.empty:
             return f"<tr><td colspan='{len(DISPLAY_COLS)}' style='text-align:center;color:#888;padding:20px;'>暫無數據</td></tr>"
+        
         d = d[[c for c in DISPLAY_COLS if c in d.columns]]
         rows = []
         for _, row in d.iterrows():
             direction = row.get('方向', '')
             strength = row.get('強度', '')
             pct = STRENGTH_PCT.get(strength, 30)
+            resonance_val = row.get('共振', '單指標')
             
             if direction == '頂':
                 row_class = 'top-row'
@@ -149,10 +150,22 @@ def build_html():
                     val = dir_html
                 elif col == '強度':
                     val = f'<div class="strength-bar"><div class="strength-fill strength-{val}" style="width:{pct}%;"></div><span class="strength-text">{val}</span></div>'
-                elif col == '指標':
-                    val = rename_indicator(val)
                 elif col == 'lookback':
                     val = '長' if val == 'long' else '短'
+                elif col == 'DIF有冇':
+                    val = '✅' if val == '有' else '—'
+                elif col == 'J有冇':
+                    val = '✅' if val == '有' else '—'
+                elif col == '共振':
+                    if val == '雙指標':
+                        val = '<span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span>'
+                    else:
+                        val = '<span class="resonance-badge resonance-single">單指標</span>'
+                elif col in ['DIF變化%', 'J變化%']:
+                    if pd.isna(val) or val == '':
+                        val = '—'
+                    else:
+                        val = f'{val}%'
                 cells.append(f"<td>{val}</td>")
             
             row_json = {
@@ -161,18 +174,21 @@ def build_html():
                 'date': str(row.get('日期_str', '')),
                 'level': str(row.get('週期', '')),
                 'direction': str(direction),
-                'ind': rename_indicator(str(row.get('指標', ''))),
                 'prev_price': str(row.get('前高/低', '')),
                 'current_price': str(row.get('現價', '')),
                 'price_change': str(row.get('價變化%', '')),
-                'ind_change': str(row.get('指標變化%', '')),
+                'dif_change': str(row.get('DIF變化%', '')),
+                'j_change': str(row.get('J變化%', '')),
+                'has_dif': str(row.get('DIF有冇', '')),
+                'has_j': str(row.get('J有冇', '')),
                 'strength': str(strength),
                 'lookback': '長' if str(row.get('lookback', '')) == 'long' else '短',
-                'tag': str(row.get('tag', ''))
+                'tag': str(row.get('tag', '')),
+                'resonance': str(resonance_val),
             }
             row_json_str = json.dumps(row_json, ensure_ascii=False).replace("'", "&#39;")
             
-            rows.append(f'<tr class="{row_class}" data-direction="{direction}" data-strength="{strength}" data-ticker="{row.get("標的","")}" data-json=\'{row_json_str}\' onclick="showDetail(this)">')
+            rows.append(f'<tr class="{row_class}" data-direction="{direction}" data-strength="{strength}" data-resonance="{resonance_val}" data-ticker="{row.get("標的","")}" data-json=\'{row_json_str}\' onclick="showDetail(this)">')
             rows.append("".join(cells))
             rows.append("</tr>")
         return "".join(rows)
@@ -197,28 +213,9 @@ def build_html():
           <span class="bar-count">{t['count']}</span>
         </div>'''
     
-    # Trend chart data
-    trend_data_json = json.dumps({
-        'dates': trend_dates,
-        'top': trend_top,
-        'bot': trend_bot
-    }, ensure_ascii=False)
+    trend_data_json = json.dumps({'dates': trend_dates, 'top': trend_top, 'bot': trend_bot}, ensure_ascii=False)
+    strength_data_json = json.dumps({'strong': strength_counts['強'], 'medium': strength_counts['中'], 'weak': strength_counts['弱']}, ensure_ascii=False)
     
-    # Strength donut data
-    strength_data_json = json.dumps({
-        'strong': strength_counts['強'],
-        'medium': strength_counts['中'],
-        'weak': strength_counts['弱']
-    }, ensure_ascii=False)
-    
-    # NQ Key Levels
-    nq_data_json = json.dumps({
-        'high': 31616.5,
-        'low': 30760.2,
-        'current': 31397.8
-    }, ensure_ascii=False)
-    
-    # 趨勢圖 HTML（有 data 就顯示 chart，冇就顯示提示）
     if trend_dates:
         trend_html = '<div class="chart-container"><canvas id="trendChart"></canvas></div>'
     else:
@@ -252,7 +249,7 @@ def build_html():
     background: var(--bg); color: var(--text);
     margin: 0; padding: 20px; transition: all 0.3s;
   }}
-  .container {{ max-width: 1400px; margin: 0 auto; }}
+  .container {{ max-width: 1500px; margin: 0 auto; }}
   h1 {{ color: var(--accent); border-bottom: 2px solid var(--border); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }}
   h2 {{ color: var(--accent); margin-top: 30px; border-left: 4px solid var(--accent); padding-left: 10px; }}
   .card {{
@@ -308,6 +305,13 @@ def build_html():
     color: white; line-height: 18px; padding-left: 6px;
   }}
   
+  .resonance-badge {{
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: bold;
+  }}
+  .resonance-dual {{ background: #a371f7; color: white; }}
+  .resonance-single {{ background: #30363d; color: var(--muted); }}
+  
   .controls {{
     display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;
     padding: 15px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -335,17 +339,6 @@ def build_html():
   
   .resonance-item {{ padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--border); }}
   .resonance-item:last-child {{ border-bottom: none; }}
-  
-  .keylevel {{ margin: 15px 0; }}
-  .keylevel-bar {{
-    position: relative; height: 30px; background: linear-gradient(90deg, var(--bot-color) 0%, var(--bg) 50%, var(--top-color) 100%);
-    border-radius: 15px; overflow: visible;
-  }}
-  .keylevel-marker {{
-    position: absolute; top: -5px; width: 4px; height: 40px;
-    background: white; border-radius: 2px; box-shadow: 0 0 8px rgba(255,255,255,0.8);
-  }}
-  .keylevel-labels {{ display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--muted); }}
   
   .modal {{
     display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -418,7 +411,6 @@ def build_html():
   </div>
 </div>
 
-<!-- 今日 vs 昨日 -->
 <div class="card">
   <strong>📈 今日 vs 昨日：</strong>
   今日 <span style="color:var(--accent);font-weight:bold;">{today_count}</span>
@@ -426,7 +418,6 @@ def build_html():
   | 變化 <span class="delta {diff_class}">{diff_str}</span>
 </div>
 
-<!-- 圖表區 -->
 <div class="grid-2">
   <div class="card">
     <h2 style="margin-top:0;">📊 歷史趨勢（30 日）</h2>
@@ -438,32 +429,16 @@ def build_html():
   </div>
 </div>
 
-<!-- Top 5 -->
 <div class="card">
   <h2 style="margin-top:0;">📈 Top 5 標的（30 日）</h2>
   {top_tickers_html if top_tickers_html else '<p style="color:var(--muted);">暫無數據</p>'}
 </div>
 
-<!-- 共振 -->
 <div class="card">
   <h2 style="margin-top:0;">⭐ 多週期共振</h2>
   {resonance_html}
 </div>
 
-<!-- NQ Key Levels -->
-<div class="card">
-  <h2 style="margin-top:0;">📍 NQ 關鍵位</h2>
-  <div class="keylevel">
-    <div class="keylevel-bar" id="nq-bar"></div>
-    <div class="keylevel-labels">
-      <span>5日低 30,760</span>
-      <span>現價 31,398</span>
-      <span>5日高 31,616</span>
-    </div>
-  </div>
-</div>
-
-<!-- 今日訊號 -->
 <h2>🔥 今日訊號</h2>
 
 <div class="controls">
@@ -472,6 +447,7 @@ def build_html():
   <button class="btn" data-filter="top" onclick="filterRows('top', this)">🔴 頂</button>
   <button class="btn" data-filter="bot" onclick="filterRows('bot', this)">🟢 底</button>
   <button class="btn" data-filter="strong" onclick="filterRows('strong', this)">🔥 強</button>
+  <button class="btn" data-filter="dual" onclick="filterRows('dual', this)">⭐⭐ 雙指標</button>
   
   <span class="label-text" style="margin-left:20px;">排序：</span>
   <button class="btn" onclick="sortBy('strength', this)">按強度</button>
@@ -490,7 +466,7 @@ def build_html():
 </div>
 
 <div class="footer">
-  ⚡ Radar V18.4 | Powered by GitHub Actions + GitHub Pages
+  ⚡ Radar V19.0 | Powered by GitHub Actions + GitHub Pages
 </div>
 
 </div>
@@ -541,12 +517,14 @@ function applyFilters(query = '') {{
     if (!row.dataset.direction) return;
     const direction = row.dataset.direction;
     const strength = row.dataset.strength;
+    const resonance = row.dataset.resonance;
     const ticker = (row.dataset.ticker || '').toLowerCase();
     
     let show = true;
     if (currentFilter === 'top' && direction !== '頂') show = false;
     if (currentFilter === 'bot' && direction !== '底') show = false;
     if (currentFilter === 'strong' && strength !== '強') show = false;
+    if (currentFilter === 'dual' && resonance !== '雙指標') show = false;
     
     if (queries.length > 0) {{
       let matched = false;
@@ -588,10 +566,13 @@ function showDetail(row) {{
     const dirIcon = data.direction === '頂' ? '🔴 頂背離' : '🟢 底背離';
     const rows = [
       ['日期', data.date], ['週期', data.level], ['方向', dirIcon],
-      ['指標', data.ind], ['型態', data.tag], ['長/短', data.lookback],
+      ['型態', data.tag], ['長/短', data.lookback],
       ['前高/低', data.prev_price], ['現價', data.current_price],
-      ['價變化', data.price_change + '%'], ['指標變化', data.ind_change + '%'],
-      ['強度', data.strength],
+      ['價變化', data.price_change + '%'],
+      ['DIF 變化', data.dif_change ? data.dif_change + '%' : '—'],
+      ['J 變化', data.j_change ? data.j_change + '%' : '—'],
+      ['DIF 有冇', data.has_dif], ['J 有冇', data.has_j],
+      ['強度', data.strength], ['共振', data.resonance],
     ];
     
     body.innerHTML = rows.map(([k, v]) => 
@@ -610,7 +591,8 @@ function exportCSV() {{
   const rows = document.querySelectorAll('#today-table tbody tr[data-direction]');
   const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
   
-  let csv = '日期,標的,中文名,週期,方向,指標,前高/低,現價,價變化%,指標變化%,強度,長/短,型態\\n';
+  const headers = Array.from(document.querySelectorAll('#today-table thead th')).map(th => th.innerText.trim());
+  let csv = headers.join(',') + '\\n';
   visibleRows.forEach(r => {{
     const cells = Array.from(r.querySelectorAll('td')).map(td => {{
       let text = td.innerText.trim();
@@ -630,7 +612,6 @@ function exportCSV() {{
 
 const trendData = {trend_data_json};
 const strengthData = {strength_data_json};
-const nqData = {nq_data_json};
 
 const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
 const chartTextColor = () => isDark() ? '#c9d1d9' : '#1f2328';
@@ -643,16 +624,8 @@ if (trendCtx && trendData.dates.length > 0) {{
     data: {{
       labels: trendData.dates.map(d => d.slice(5)),
       datasets: [
-        {{
-          label: '頂背離', data: trendData.top,
-          borderColor: '#f85149', backgroundColor: 'rgba(248, 81, 73, 0.1)',
-          tension: 0.3, fill: true,
-        }},
-        {{
-          label: '底背離', data: trendData.bot,
-          borderColor: '#3fb950', backgroundColor: 'rgba(63, 185, 80, 0.1)',
-          tension: 0.3, fill: true,
-        }}
+        {{ label: '頂背離', data: trendData.top, borderColor: '#f85149', backgroundColor: 'rgba(248, 81, 73, 0.1)', tension: 0.3, fill: true }},
+        {{ label: '底背離', data: trendData.bot, borderColor: '#3fb950', backgroundColor: 'rgba(63, 185, 80, 0.1)', tension: 0.3, fill: true }}
       ]
     }},
     options: {{
@@ -683,16 +656,6 @@ if (donutCtx) {{
       plugins: {{ legend: {{ position: 'bottom', labels: {{ color: chartTextColor() }} }} }}
     }}
   }});
-}}
-
-const nqBar = document.getElementById('nq-bar');
-if (nqBar) {{
-  const range = nqData.high - nqData.low;
-  const pct = ((nqData.current - nqData.low) / range) * 100;
-  const marker = document.createElement('div');
-  marker.className = 'keylevel-marker';
-  marker.style.left = pct + '%';
-  nqBar.appendChild(marker);
 }}
 </script>
 
