@@ -2,7 +2,8 @@ name: daily-radar
 
 on:
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 22 * * *'   # UTC 22:00 = HKT 06:00
+    - cron: '0 13 * * *'   # UTC 13:00 = HKT 21:00
   workflow_dispatch:
 
 concurrency:
@@ -38,14 +39,14 @@ jobs:
       - name: Build Dashboard
         run: python build_site.py
 
-      - name: 保存 history.csv + index.html
+      - name: 保存 history.csv + index.html + dashboard_data.json
         run: |
           git config user.name "radar-bot"
           git config user.email "bot@bot.com"
-          git add history.csv index.html
+          git add history.csv index.html dashboard_data.json
           if git diff --cached --quiet; then
             echo "冇變更，跳過 commit"
           else
-            git commit -m "update V19.0 ${{ github.run_number }}"
+            git commit -m "update V19.1 ${{ github.run_number }}"
             git push
           fi
