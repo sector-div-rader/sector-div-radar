@@ -660,12 +660,10 @@ def send_telegram(text):
         r = requests.post(url, json={
             'chat_id': TELEGRAM_CHAT_ID,
             'text': text,
-            'parse_mode': 'HTML',
             'disable_web_page_preview': True
         }, timeout=15)
         print(f"[Telegram] {r.status_code}", flush=True)
-    except Exception as e:
-        print(f"[Telegram] 失敗: {e}", flush=True)
+        print(f"[TG-DEBUG] response: {r.text[:300]}", flush=True)
 
 # ==================== Email 組裝 ====================
 
