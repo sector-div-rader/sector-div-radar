@@ -1,12 +1,12 @@
-# main.py - NQ 0DTE 全宏觀晨報 V17.3
+# main.py - NQ 0DTE 全宏觀晨報 V17.4
 # ============================================
-# V17.3 改動（相對 V17.2）：
-#   1. 修正指標變化 % 符號（(curr - prev) / abs(prev)）
-#   2. 只顯示 % （唔顯示前後數值）
-#   3. % 封頂 100%
-#   4. ^VIX / ^TNX 照做分析（唔標反向）
-#   5. 大勢合併：每個標的只顯示一次（已確認 + 即時）
-#   6. 刪「現價」同行嘅指標值
+# V17.4 改動（相對 V17.3）：
+#   1. 【最重要】修正邏輯：檢查指標變化方向
+#      - 頂背離：價升 + 指標跌（ind_change <= -5%）
+#      - 底背離：價跌 + 指標升（ind_change >= +5%）
+#   2. 大勢區補「頂背離 / 底背離」標示
+#   3. 大勢區同一標的（M + W）分開顯示
+#   4. 同一標的「頂 + 底」同一 block 顯示
 # ============================================
 
 import yfinance as yf
@@ -116,10 +116,15 @@ def check_pivot_divergence(p_s, i_s, highs, lows, last_idx, recent_window):
     if bot_div: return ('底', bot_div['dist'])
     return None
 
-# ==================== 新邏輯：雙重 Lookback ====================
+# ==================== 新邏輯：雙重 Lookback（V17.4 修正方向）====================
 
 def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
                         price_tol=0.005, ind_drop_min=0.05):
+    """
+    V17.4 修正：檢查指標變化方向
+      - 頂背離：價接近前高 + 指標跌（ind_change <= -ind_drop_min）
+      - 底背離：價接近前低 + 指標升（ind_change >= +ind_drop_min）
+    """
     if len(price) < long_lb + 2:
         return {'long': [], 'short': []}
 
@@ -138,16 +143,17 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
         if len(recent_price) == 0:
             continue
 
-        # ---- 頂背離 ----
+        # ---- 頂背離（價接近前高 + 指標跌） ----
         prev_high_pos = int(np.argmax(recent_price.values))
         prev_high_price = float(recent_price.iloc[prev_high_pos])
         prev_high_ind = float(recent_ind.iloc[prev_high_pos])
 
         if prev_high_price != 0 and prev_high_ind != 0:
             price_close = p_now >= prev_high_price * (1 - price_tol)
-            ind_change = (i_now - prev_high_ind) / abs(prev_high_ind)  # 正確符號
+            ind_change = (i_now - prev_high_ind) / abs(prev_high_ind)
 
-            if price_close and abs(ind_change) >= ind_drop_min:
+            # ★ 關鍵：頂背離要求指標「跌」
+            if price_close and ind_change <= -ind_drop_min:
                 is_new_high = p_now > prev_high_price
                 dist = lb - prev_high_pos
                 result[label].append({
@@ -163,7 +169,7 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
                 })
                 continue
 
-        # ---- 底背離 ----
+        # ---- 底背離（價接近前低 + 指標升） ----
         prev_low_pos = int(np.argmin(recent_price.values))
         prev_low_price = float(recent_price.iloc[prev_low_pos])
         prev_low_ind = float(recent_ind.iloc[prev_low_pos])
@@ -172,7 +178,8 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
             price_close_low = p_now <= prev_low_price * (1 + price_tol)
             ind_change = (i_now - prev_low_ind) / abs(prev_low_ind)
 
-            if price_close_low and abs(ind_change) >= ind_drop_min:
+            # ★ 關鍵：底背離要求指標「升」
+            if price_close_low and ind_change >= ind_drop_min:
                 is_new_low = p_now < prev_low_price
                 dist = lb - prev_low_pos
                 result[label].append({
@@ -394,7 +401,6 @@ def get_nq_custom_chart_status():
 # ==================== 格式化工具 ====================
 
 def cap_pct(pct):
-    """封頂 ±100%"""
     if pct > 100:
         return ">+100%"
     if pct < -100:
@@ -405,10 +411,9 @@ def fmt_pivot_signal(info, lv, sig):
     dist = sig['dist']
     unit = {'M': '個月', 'W': '週'}.get(lv, '根')
     tag = '最新' if dist == 0 else f'{dist}{unit}前'
-    return f"[已確認] {lv} {sig['dir']}背離 [{sig['ind']}] ({tag})"
+    return f"   [已確認] {lv} {sig['dir']}背離 [{sig['ind']}] ({tag})"
 
 def fmt_dual_signal_body(sig):
-    """V17.3：只顯示 % + 封頂"""
     label = sig.get('lookback', 'long')
     is_long = (label == 'long')
 
@@ -429,54 +434,62 @@ def fmt_dual_signal_body(sig):
         f"            價: {price_pct} / {ind_name}: {ind_pct}"
     )
 
-# ==================== 分組 ====================
+# ==================== 分組（V17.4：同一 block 顯示頂 + 底）====================
 
-def group_dual_by_ticker_lv(signals):
-    """將新邏輯訊號按 (ticker, level, type) 分組"""
+def group_dual_by_ticker(signals):
+    """
+    V17.4：按 ticker 分組（唔分方向），同一 block 顯示頂 + 底
+    """
     groups = {}
     for s in signals:
-        key = (s['ticker'], s['level'], s['type'])
-        groups.setdefault(key, []).append(s)
+        groups.setdefault(s['ticker'], []).append(s)
 
     blocks = []
-    for (ticker, lv, direction), sigs in groups.items():
+    for ticker, sigs in groups.items():
         info = ALL_TARGETS[ticker].copy()
         info['ticker'] = ticker
 
-        long_sigs = [s for s in sigs if s.get('lookback') == 'long']
-        short_sigs = [s for s in sigs if s.get('lookback') == 'short']
+        top_sigs = [s for s in sigs if s['type'] == '頂']
+        bot_sigs = [s for s in sigs if s['type'] == '底']
 
-        if long_sigs:
-            display_sigs = long_sigs
-            has_hidden_short = len(short_sigs) > 0
-        elif short_sigs:
-            display_sigs = short_sigs
-            has_hidden_short = False
-        else:
-            continue
+        current_price = sigs[0]['current_price']
+        header = f"🚨 {info['name']} ({ticker}) (現價 {current_price:,.2f})"
 
-        display_sigs = sorted(display_sigs, key=lambda x: (0 if x['ind'] == 'DIF' else 1))
+        body_lines = []
 
-        current_price = display_sigs[0]['current_price']
-        header = f"🚨 {info['name']} ({ticker}) | {lv} {direction}背離 (現價 {current_price:,.2f})"
+        if top_sigs:
+            body_lines.append("   🔴 頂背離")
+            long_top = [s for s in top_sigs if s.get('lookback') == 'long']
+            short_top = [s for s in top_sigs if s.get('lookback') == 'short']
+            display = long_top if long_top else short_top
+            display = sorted(display, key=lambda x: (0 if x['ind'] == 'DIF' else 1))
+            for s in display:
+                body_lines.append(fmt_dual_signal_body(s))
+            if long_top and short_top:
+                body_lines.append("      ⚡ 另有短訊號（未顯示）")
 
-        body_lines = [fmt_dual_signal_body(s) for s in display_sigs]
-
-        if has_hidden_short:
-            body_lines.append("      ⚡ 另有短訊號（未顯示）")
+        if bot_sigs:
+            body_lines.append("   🟢 底背離")
+            long_bot = [s for s in bot_sigs if s.get('lookback') == 'long']
+            short_bot = [s for s in bot_sigs if s.get('lookback') == 'short']
+            display = long_bot if long_bot else short_bot
+            display = sorted(display, key=lambda x: (0 if x['ind'] == 'DIF' else 1))
+            for s in display:
+                body_lines.append(fmt_dual_signal_body(s))
+            if long_bot and short_bot:
+                body_lines.append("      ⚡ 另有短訊號（未顯示）")
 
         blocks.append(header + "\n" + "\n".join(body_lines))
 
     return blocks
 
-# ==================== 大勢合併 ====================
+# ==================== 大勢合併（V17.4）====================
 
 def build_macro_section(pivot_sigs, dual_mw):
     """
-    V17.3：合併「已確認 Pivot」+「即時 Lookback」
-    每個標的只顯示一次
+    V17.4：按 ticker 分組，同一 block 顯示頂 + 底
+            已確認 Pivot + 即時 Lookback 都喺同一 block
     """
-    # 按 ticker 分組
     tickers_seen = set()
     for s in pivot_sigs + dual_mw:
         if s['level'] in ['M', 'W']:
@@ -493,19 +506,35 @@ def build_macro_section(pivot_sigs, dual_mw):
         # 已確認 Pivot（先）
         p_sigs = [s for s in pivot_sigs if s['ticker'] == ticker and s['level'] in ['M', 'W']]
         for s in p_sigs:
-            lines.append("   " + fmt_pivot_signal(s, s['level'], s))
+            lines.append(fmt_pivot_signal(s, s['level'], s))
 
         # 即時 Lookback（後）
         d_sigs = [s for s in dual_mw if s['ticker'] == ticker and s['level'] in ['M', 'W']]
-        # 用 group 邏輯顯示
-        sub_blocks = group_dual_by_ticker_lv([
-            {**s, 'ticker': ticker} for s in d_sigs
-        ])
-        for block in sub_blocks:
-            # 去掉 header，只保留 body
-            block_lines = block.split("\n")
-            for bl in block_lines[1:]:  # skip header
-                lines.append(bl)
+        if d_sigs:
+            top_sigs = [s for s in d_sigs if s['type'] == '頂']
+            bot_sigs = [s for s in d_sigs if s['type'] == '底']
+
+            if top_sigs:
+                lines.append("   🔴 頂背離")
+                long_top = [s for s in top_sigs if s.get('lookback') == 'long']
+                short_top = [s for s in top_sigs if s.get('lookback') == 'short']
+                display = long_top if long_top else short_top
+                display = sorted(display, key=lambda x: (0 if x['ind'] == 'DIF' else 1))
+                for s in display:
+                    lines.append(fmt_dual_signal_body(s))
+                if long_top and short_top:
+                    lines.append("      ⚡ 另有短訊號（未顯示）")
+
+            if bot_sigs:
+                lines.append("   🟢 底背離")
+                long_bot = [s for s in bot_sigs if s.get('lookback') == 'long']
+                short_bot = [s for s in bot_sigs if s.get('lookback') == 'short']
+                display = long_bot if long_bot else short_bot
+                display = sorted(display, key=lambda x: (0 if x['ind'] == 'DIF' else 1))
+                for s in display:
+                    lines.append(fmt_dual_signal_body(s))
+                if long_bot and short_bot:
+                    lines.append("      ⚡ 另有短訊號（未顯示）")
 
         lines.append("")
 
@@ -536,7 +565,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V17.3 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V17.4 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
 
@@ -550,7 +579,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
 
     L.extend([sep, "🚨 今晚即時（日 / 4H）", sep])
     if dual_dh:
-        for block in group_dual_by_ticker_lv(dual_dh):
+        for block in group_dual_by_ticker(dual_dh):
             L.append(block)
     else:
         L.append("   🟢 暫無顯著背離")
@@ -582,39 +611,3 @@ def main():
 
             for lv in ['M', 'W']:
                 res = scan_dual_lookback(t, info, lv)
-                for r in res:
-                    dual_mw.append({**info, 'ticker': t, 'level': lv, **r})
-
-            for lv in ['D', '4H']:
-                res = scan_dual_lookback(t, info, lv)
-                for r in res:
-                    dual_dh.append({**info, 'ticker': t, 'level': lv, **r})
-
-        print(f"舊邏輯訊號: {len(pivot_sigs)}", flush=True)
-        print(f"新邏輯 M/W: {len(dual_mw)}", flush=True)
-        print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
-
-        body = build_email_body(pivot_sigs, dual_dh, dual_mw)
-
-        msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V17.3] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
-        msg['From'] = EMAIL_CONFIG['sender_email']
-        msg['To'] = EMAIL_CONFIG['receiver_email']
-        msg.attach(MIMEText(
-            f"<pre style='font-family:Consolas,Menlo,monospace;font-size:13px;background:#f8f9fa;padding:15px;'>{body}</pre>",
-            'html', 'utf-8'
-        ))
-
-        s = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
-        s.starttls()
-        s.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
-        s.send_message(msg)
-        s.quit()
-        print("✅ 晨報已發送", flush=True)
-
-    except Exception as e:
-        print(f"❌ 失敗: {e}", flush=True)
-        traceback.print_exc()
-
-if __name__ == '__main__':
-    main()
