@@ -1,12 +1,10 @@
-# main.py - NQ 0DTE 全宏觀晨報 V18.0
+# main.py - NQ 0DTE 全宏觀晨報 V19.1
 # ============================================
-# V18.0 新功能（相對 V17.7）：
-#   1. 歷史紀錄（寫入 history.csv）
-#   2. Telegram Bot 推送
-#   3. 網頁 Dashboard（生成 index.html）
-#   4. 財經日曆 API（Financial Modeling Prep）
-#   5. 多週期共振評分
-#   6. 背離強度評分
+# V19.1 新功能（相對 V19.0）：
+#   1. 21:00 模式（只 update Dashboard，唔 send email/Telegram）
+#   2. 財經日曆加數值（實際 / 預期 / 前值）
+#   3. NQ 關鍵位自動更新（寫入 dashboard_data.json）
+#   4. 5m EMA 帶寫入 dashboard_data.json
 # ============================================
 
 import yfinance as yf
@@ -73,6 +71,11 @@ def time_ago(dist, lv):
             return f'{days} 日前'
         return f'{hours} 小時前'
     return f'{dist} 根前'
+
+def is_dashboard_only():
+    """V19.1：判斷係咪 21:00 跑（只 update Dashboard）"""
+    now_hkt = datetime.now(timezone(timedelta(hours=8)))
+    return now_hkt.hour == 21
 
 # ==================== 強度評分 ====================
 
@@ -320,9 +323,9 @@ def scan_dual_lookback(t, info, lv):
 # ==================== 財經日曆（FMP）====================
 
 def get_fmp_calendar():
-    """V18.0：用 FMP API 攞今日經濟事件"""
+    """V19.1：FMP 財經日曆 + 數值（唔要開盤）"""
     if not FMP_API_KEY:
-        return "📅 【今晚 0DTE 關鍵日曆】：\n   (未設定 FMP API key，使用預設)"
+        return "📅 【今晚 0DTE 關鍵日曆】：\n   (未設定 FMP API key)"
     
     try:
         today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
@@ -333,16 +336,40 @@ def get_fmp_calendar():
         if not isinstance(data, list) or len(data) == 0:
             return "📅 【今晚 0DTE 關鍵日曆】：\n   🟢 今日暫無重大經濟事件"
         
-        # 篩選高影響事件
-        high_impact = [e for e in data if e.get('impact') == 'High']
+        # 篩選高影響 + 唔要「開盤」
+        high_impact = []
+        for e in data:
+            if e.get('impact') != 'High':
+                continue
+            event_name = e.get('event', '')
+            if 'open' in event_name.lower() or '開盤' in event_name:
+                continue
+            high_impact.append(e)
         
         lines = ["📅 【今晚 0DTE 關鍵日曆（高影響）】："]
         if high_impact:
-            for e in high_impact[:10]:  # 最多 10 個
+            for e in high_impact[:10]:
                 event_name = e.get('event', 'Unknown')
                 country = e.get('country', '')
-                time_str = e.get('date', '')[-5:]  # HH:MM
+                time_str = e.get('date', '')[-8:-3]
+                
+                actual = e.get('actual')
+                estimate = e.get('estimate')
+                previous = e.get('previous')
+                
+                value_parts = []
+                if actual is not None:
+                    value_parts.append(f"實際 {actual}")
+                if estimate is not None:
+                    value_parts.append(f"預期 {estimate}")
+                if previous is not None:
+                    value_parts.append(f"前值 {previous}")
+                
+                value_str = " | ".join(value_parts) if value_parts else ""
+                
                 lines.append(f"   * {time_str} | {country} {event_name}")
+                if value_str:
+                    lines.append(f"     └─ {value_str}")
         else:
             lines.append("   🟢 今日暫無高影響事件")
         
@@ -444,6 +471,44 @@ def get_nq_custom_chart_status():
     except Exception as e:
         return f"5m 均線帶失敗: {e}"
 
+# ==================== NQ 數據（for Dashboard）====================
+
+def get_nq_key_levels_data():
+    """V19.1：攞 NQ 關鍵位（for Dashboard）"""
+    try:
+        nq = yf.Ticker('NQ=F').history(period='5d', interval='1d')
+        return {
+            'high': float(nq['High'].max()),
+            'low': float(nq['Low'].min()),
+            'current': float(nq['Close'].iloc[-1])
+        }
+    except Exception as e:
+        print(f"[NQ Key Levels] 失敗: {e}")
+        return {'high': 0, 'low': 0, 'current': 0}
+
+def get_nq_ema_data():
+    """V19.1：攞 NQ 5m EMA 帶（for Dashboard）"""
+    try:
+        raw_df = yf.Ticker('NQ=F').history(period='1mo', interval='5m')
+        if raw_df.empty or len(raw_df) < 100:
+            return None
+        calc_df = calculate_custom_indicators(raw_df)
+        last = calc_df.iloc[-1]
+        
+        band_vals = [float(v) for v in [last['EMA700'], last['EMA800'], last['EMA900'], last['EMA1000']] if not np.isnan(v)]
+        if len(band_vals) < 2:
+            return None
+        
+        return {
+            'current': float(last['Close']),
+            'band_top': max(band_vals),
+            'band_bot': min(band_vals),
+            'ema3500': float(last['EMA3500']) if not np.isnan(last['EMA3500']) else None,
+        }
+    except Exception as e:
+        print(f"[NQ EMA] 失敗: {e}")
+        return None
+
 # ==================== 格式化 ====================
 
 def cap_pct(pct):
@@ -474,7 +539,6 @@ def fmt_dual_signal_body(sig):
     price_pct = cap_pct(sig['price_diff_pct'])
     ind_pct = cap_pct(sig['ind_change_pct'])
 
-    # V18.0：加強度
     strength, strength_icon = get_strength(sig['ind_change_pct'])
 
     return (
@@ -586,11 +650,9 @@ def build_macro_section(pivot_sigs, dual_mw):
 
     return lines
 
-# ==================== 多週期共振評分 ====================
+# ==================== 多週期共振 ====================
 
 def get_resonance(dual_mw, dual_dh):
-    """V18.0：多週期共振評分"""
-    # 按 ticker + type 統計週期數
     resonance = {}
     for s in dual_mw + dual_dh:
         key = (s['ticker'], s['type'])
@@ -603,12 +665,8 @@ def get_resonance(dual_mw, dual_dh):
             lvl_str = '+'.join(sorted(levels, key=lambda x: {'M': 1, 'W': 2, 'D': 3, '4H': 4}.get(x, 99)))
             stars = '⭐' * len(levels)
             results.append({
-                'ticker': ticker,
-                'name': name,
-                'type': type_,
-                'levels': lvl_str,
-                'count': len(levels),
-                'stars': stars
+                'ticker': ticker, 'name': name, 'type': type_,
+                'levels': lvl_str, 'count': len(levels), 'stars': stars
             })
     
     return sorted(results, key=lambda x: -x['count'])
@@ -619,7 +677,6 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
     """V19.0：合併 DIF + J，按 (ticker, level, 方向) 一行"""
     today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
     
-    # 按 (ticker, level, 方向) 分組
     grouped = {}
     for s in dual_mw + dual_dh:
         key = (s['ticker'], s['level'], s['type'])
@@ -630,7 +687,6 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
         info = ALL_TARGETS.get(ticker, {})
         name = info.get('name', ticker)
         
-        # 分長 / 短（優先長）
         long_sigs = [s for s in sigs if s.get('lookback') == 'long']
         short_sigs = [s for s in sigs if s.get('lookback') == 'short']
         target_sigs = long_sigs if long_sigs else short_sigs
@@ -638,14 +694,10 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
         if not target_sigs:
             continue
         
-        # 搵 DIF / J
         dif_sig = next((s for s in target_sigs if s['ind'] == 'DIF'), None)
         j_sig = next((s for s in target_sigs if s['ind'] == 'J'), None)
-        
-        # 取價位（優先 DIF，冇就用 J）
         ref = dif_sig if dif_sig else j_sig
         
-        # 計算強度（取最強嗰個）
         strengths = []
         if dif_sig:
             s1, _ = get_strength(dif_sig['ind_change_pct'])
@@ -657,37 +709,21 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
         STRENGTH_RANK = {'弱': 1, '中': 2, '強': 3}
         RANK_TO_STRENGTH = {1: '弱', 2: '中', 3: '強'}
         
-        if strengths:
-            base_rank = max(STRENGTH_RANK.get(s, 1) for s in strengths)
-        else:
-            base_rank = 1
+        base_rank = max(STRENGTH_RANK.get(s, 1) for s in strengths) if strengths else 1
         
-        # 升級：DIF + J 都出 → 升一級
         has_dif = dif_sig is not None
         has_j = j_sig is not None
         if has_dif and has_j:
             base_rank = min(base_rank + 1, 3)
         
         final_strength = RANK_TO_STRENGTH[base_rank]
-        
-        # 共振類型
-        if has_dif and has_j:
-            resonance = '雙指標'
-        else:
-            resonance = '單指標'
-        
-        # lookback
+        resonance = '雙指標' if (has_dif and has_j) else '單指標'
         lookback = 'long' if long_sigs else 'short'
-        
-        # tag（優先 DIF，冇就用 J）
         tag = ref.get('tag', '')
         
         rows.append({
-            '日期': today,
-            '標的': ticker,
-            '中文名': name,
-            '週期': level,
-            '方向': direction,
+            '日期': today, '標的': ticker, '中文名': name,
+            '週期': level, '方向': direction,
             '前高/低': round(ref['prev_price'], 2),
             '現價': round(ref['current_price'], 2),
             '價變化%': round(ref['price_diff_pct'], 2),
@@ -695,20 +731,16 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
             'J變化%': round(j_sig['ind_change_pct'], 2) if j_sig else '',
             'DIF有冇': '有' if has_dif else '冇',
             'J有冇': '有' if has_j else '冇',
-            '強度': final_strength,
-            'lookback': lookback,
-            'tag': tag,
-            '共振': resonance,
+            '強度': final_strength, 'lookback': lookback,
+            'tag': tag, '共振': resonance,
         })
     
-    # ===== append 模式 =====
     if rows:
         new_df = pd.DataFrame(rows)
         
         if os.path.exists('history.csv'):
             try:
                 old_df = pd.read_csv('history.csv', encoding='utf-8-sig')
-                # 移除今日舊數據（避免重複）
                 if '日期' in old_df.columns:
                     old_df = old_df[old_df['日期'].astype(str) != today]
                 combined = pd.concat([old_df, new_df], ignore_index=True)
@@ -720,20 +752,26 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
         
         combined.to_csv('history.csv', index=False, encoding='utf-8-sig')
         print(f"✅ 寫入 history.csv ({len(rows)} 行，總共 {len(combined)} 行)", flush=True)
+    
+    # ===== V19.1：寫入 dashboard_data.json =====
+    try:
+        dashboard_data = {
+            'nq_key_levels': get_nq_key_levels_data(),
+            'nq_ema': get_nq_ema_data(),
+            'fmp_calendar': get_fmp_calendar(),
+        }
+        with open('dashboard_data.json', 'w', encoding='utf-8') as f:
+            json.dump(dashboard_data, f, ensure_ascii=False)
+        print(f"✅ 寫入 dashboard_data.json", flush=True)
+    except Exception as e:
+        print(f"⚠️ 寫 dashboard_data.json 失敗: {e}", flush=True)
 
 # ==================== Telegram 推送 ====================
 
 def send_telegram(text):
-    """V18.0：Telegram 推送"""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("[Telegram] 未設定 token 或 chat_id，跳過", flush=True)
         return
-    
-    # ===== DEBUG =====
-    print(f"[TG-DEBUG] token 長度: {len(TELEGRAM_TOKEN)}", flush=True)
-    print(f"[TG-DEBUG] token 前 15 字: {TELEGRAM_TOKEN[:15]}", flush=True)
-    print(f"[TG-DEBUG] chat_id repr: {repr(TELEGRAM_CHAT_ID)}", flush=True)
-    # =================
     
     try:
         if len(text) > 4000:
@@ -746,7 +784,6 @@ def send_telegram(text):
             'disable_web_page_preview': True
         }, timeout=15)
         print(f"[Telegram] {r.status_code}", flush=True)
-        print(f"[TG-DEBUG] response: {r.text[:300]}", flush=True)
     except Exception as e:
         print(f"[Telegram] 失敗: {e}", flush=True)
 
@@ -765,7 +802,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V18.0 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V19.1 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
 
@@ -777,7 +814,6 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
 
     L.append("   " + macro_bg)
 
-    # 多週期共振
     resonance = get_resonance(dual_mw, dual_dh)
     if resonance:
         L.extend([sep, "⭐ 多週期共振", sep])
@@ -802,6 +838,34 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
 
 def main():
     try:
+        dashboard_only = is_dashboard_only()
+        
+        print(f"=== 模式: {'Dashboard Only (21:00)' if dashboard_only else 'Full (06:00)'} ===", flush=True)
+        
+        # 21:00 模式：只 update Dashboard
+        if dashboard_only:
+            print(f"=== 21:00 Dashboard 更新 ===", flush=True)
+            
+            if os.path.exists('history.csv'):
+                df = pd.read_csv('history.csv', encoding='utf-8-sig')
+                print(f"✅ 讀 history.csv ({len(df)} 行)", flush=True)
+            
+            try:
+                dashboard_data = {
+                    'nq_key_levels': get_nq_key_levels_data(),
+                    'nq_ema': get_nq_ema_data(),
+                    'fmp_calendar': get_fmp_calendar(),
+                }
+                with open('dashboard_data.json', 'w', encoding='utf-8') as f:
+                    json.dump(dashboard_data, f, ensure_ascii=False)
+                print(f"✅ 寫入 dashboard_data.json", flush=True)
+            except Exception as e:
+                print(f"⚠️ 寫 dashboard_data.json 失敗: {e}", flush=True)
+            
+            print("✅ 21:00 Dashboard 更新完成", flush=True)
+            return
+        
+        # 06:00 模式：正常流程
         print(f"=== 掃描 {len(ALL_TARGETS)} 個標的 ===", flush=True)
 
         pivot_sigs = []
@@ -828,14 +892,12 @@ def main():
         print(f"新邏輯 M/W: {len(dual_mw)}", flush=True)
         print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
 
-        # 歷史紀錄
         save_history(pivot_sigs, dual_mw, dual_dh)
 
         body = build_email_body(pivot_sigs, dual_dh, dual_mw)
 
-        # Email
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V18] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V19.1] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
@@ -850,7 +912,6 @@ def main():
         s.quit()
         print("✅ Email 已發送", flush=True)
 
-        # Telegram
         tg_msg = body[:4000]
         send_telegram(tg_msg)
 
