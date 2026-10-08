@@ -611,3 +611,39 @@ def main():
 
             for lv in ['M', 'W']:
                 res = scan_dual_lookback(t, info, lv)
+                for r in res:
+                    dual_mw.append({**info, 'ticker': t, 'level': lv, **r})
+
+            for lv in ['D', '4H']:
+                res = scan_dual_lookback(t, info, lv)
+                for r in res:
+                    dual_dh.append({**info, 'ticker': t, 'level': lv, **r})
+
+        print(f"舊邏輯訊號: {len(pivot_sigs)}", flush=True)
+        print(f"新邏輯 M/W: {len(dual_mw)}", flush=True)
+        print(f"新邏輯 D/4H: {len(dual_dh)}", flush=True)
+
+        body = build_email_body(pivot_sigs, dual_dh, dual_mw)
+
+        msg = MIMEMultipart()
+        msg['Subject'] = f"⚡ [0DTE 雷達 V17.4] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['From'] = EMAIL_CONFIG['sender_email']
+        msg['To'] = EMAIL_CONFIG['receiver_email']
+        msg.attach(MIMEText(
+            f"<pre style='font-family:Consolas,Menlo,monospace;font-size:13px;background:#f8f9fa;padding:15px;'>{body}</pre>",
+            'html', 'utf-8'
+        ))
+
+        s = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
+        s.starttls()
+        s.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
+        s.send_message(msg)
+        s.quit()
+        print("✅ 晨報已發送", flush=True)
+
+    except Exception as e:
+        print(f"❌ 失敗: {e}", flush=True)
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    main()
