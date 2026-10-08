@@ -265,6 +265,10 @@ def build_html():
     nq_high = nq_data.get('high', 0)
     nq_low = nq_data.get('low', 0)
     nq_current = nq_data.get('current', 0)
+    nq_r1 = nq_data.get('r1', 0)
+    nq_pivot = nq_data.get('pivot', 0)
+    nq_s1 = nq_data.get('s1', 0)
+    
     if nq_high > 0 and nq_low > 0:
         nq_pct = ((nq_current - nq_low) / (nq_high - nq_low)) * 100
         nq_html = f'''
@@ -275,6 +279,11 @@ def build_html():
             <span>現價 {nq_current:,.1f}</span>
             <span>5日高 {nq_high:,.1f}</span>
           </div>
+        </div>
+        <div style="margin-top:15px;font-size:13px;line-height:1.8;">
+          <div>🔴 R1 第一壓力：<strong>{nq_r1:,.1f}</strong></div>
+          <div>⚪ Pivot 中軸：<strong>{nq_pivot:,.1f}</strong></div>
+          <div>🟢 S1 第一支撐：<strong>{nq_s1:,.1f}</strong></div>
         </div>'''
     else:
         nq_html = '<p style="color:var(--muted);">暫無數據</p>'
