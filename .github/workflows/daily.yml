@@ -46,6 +46,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "冇變更，跳過 commit"
           else
-            git commit -m "update V18.0 ${{ github.run_number }}"
+            git commit -m "update V19.0 ${{ github.run_number }}"
             git push
           fi
