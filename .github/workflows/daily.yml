@@ -2,7 +2,7 @@ name: daily-radar
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # UTC 22:00 = HKT 06:00
+    - cron: '0 22 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -12,6 +12,8 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,3 +31,21 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+
+      - name: Build Dashboard
+        run: python build_site.py
+
+      - name: 保存 history.csv + index.html
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "bot@bot.com"
+          git add history.csv index.html
+          if git diff --cached --quiet; then
+            echo "冇變更，跳過 commit"
+          else
+            git commit -m "update V18.0 ${{ github.run_number }}"
+            git push
+          fi
