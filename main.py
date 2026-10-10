@@ -1,10 +1,8 @@
-# main.py - NQ 0DTE 全宏觀晨報 V19.1
+# main.py - NQ 0DTE 全宏觀晨報 V20.0
 # ============================================
-# V19.1 新功能（相對 V19.0）：
-#   1. 21:00 模式（只 update Dashboard，唔 send email/Telegram）
-#   2. 財經日曆加數值（實際 / 預期 / 前值）
-#   3. NQ 關鍵位自動更新（寫入 dashboard_data.json）
-#   4. 5m EMA 帶寫入 dashboard_data.json
+# V20.0 改動（相對 V19.1）：
+#   1. 加歷史勝率 filter
+#   2. Email 顯示歷史勝率
 # ============================================
 
 import yfinance as yf
@@ -53,6 +51,52 @@ ALL_TARGETS = {
     'XLU':        {'name':'公用事業ETF',   'sticker':'💡','weight':2,'category':'DEFENSIVE'},
 }
 
+# ==================== 歷史勝率（來自 backtest）====================
+
+WIN_RATE = {
+    ('^VIX', '4H', '底'): 0.778,
+    ('DX-Y.NYB', 'M', '底'): 0.765,
+    ('XLU', 'W', '底'): 0.718,
+    ('^VIX', 'W', '底'): 0.691,
+    ('XLV', 'W', '底'): 0.690,
+    ('XLI', 'W', '底'): 0.654,
+    ('XLP', 'W', '底'): 0.652,
+    ('XLP', '4H', '底'): 0.619,
+    ('IGV', 'D', '底'): 0.612,
+    ('XLU', 'D', '底'): 0.609,
+    ('GC=F', '4H', '底'): 0.600,
+    ('XLP', 'D', '底'): 0.596,
+    ('GC=F', 'D', '底'): 0.585,
+    ('XLI', 'D', '底'): 0.579,
+    ('DX-Y.NYB', '4H', '底'): 0.578,
+    ('XLF', 'D', '底'): 0.577,
+    ('CL=F', 'W', '底'): 0.576,
+    ('XLE', 'D', '底'): 0.573,
+    ('DX-Y.NYB', 'W', '底'): 0.569,
+    ('GC=F', 'W', '底'): 0.568,
+    ('^VIX', 'D', '底'): 0.565,
+    ('XLV', 'D', '底'): 0.551,
+    ('CL=F', 'D', '底'): 0.548,
+}
+
+
+def get_win_rate(ticker, level, direction):
+    """攞歷史勝率"""
+    return WIN_RATE.get((ticker, level, direction), None)
+
+
+def get_win_tag(win_rate):
+    """勝率標記"""
+    if win_rate is None:
+        return ''
+    if win_rate >= 0.65:
+        return ' ⭐⭐⭐'
+    elif win_rate >= 0.55:
+        return ' ⭐⭐'
+    else:
+        return ' ⭐'
+
+
 # ==================== 時間顯示 ====================
 
 def time_ago(dist, lv):
@@ -73,14 +117,12 @@ def time_ago(dist, lv):
     return f'{dist} 根前'
 
 def is_dashboard_only():
-    """V19.1：判斷係咪 21:00 跑（只 update Dashboard）"""
     now_hkt = datetime.now(timezone(timedelta(hours=8)))
     return now_hkt.hour == 21
 
 # ==================== 強度評分 ====================
 
 def get_strength(ind_change_pct):
-    """V18.0：按指標跌幅分強度"""
     abs_pct = abs(ind_change_pct)
     if abs_pct >= 50:
         return '強', '🔥🔥🔥'
@@ -293,11 +335,9 @@ def scan_dual_lookback(t, info, lv):
         if len(raw_df) < 40:
             return results
 
-        # M / W：去掉最新未完成 K
         if lv in ['M', 'W']:
             raw_df = raw_df.iloc[:-1]
 
-        # ★ V19.2：D / 4H 用即市價
         if lv in ['D', '4H']:
             try:
                 live = yf.Ticker(t).history(period='1d', interval='1m')
@@ -340,24 +380,21 @@ def scan_dual_lookback(t, info, lv):
         print(f"[scan_dual_lookback] {t} {lv}: {e}")
     return results
 
-
 # ==================== 財經日曆（FMP）====================
 
 def get_fmp_calendar():
-    """V19.1：FMP 財經日曆 + 數值（唔要開盤）"""
     if not FMP_API_KEY:
         return "📅 【今晚 0DTE 關鍵日曆】：\n   (未設定 FMP API key)"
-    
+
     try:
         today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
         url = f"https://financialmodelingprep.com/api/v3/economic_calendar?from={today}&to={today}&apikey={FMP_API_KEY}"
         r = requests.get(url, timeout=15)
         data = r.json()
-        
+
         if not isinstance(data, list) or len(data) == 0:
             return "📅 【今晚 0DTE 關鍵日曆】：\n   🟢 今日暫無重大經濟事件"
-        
-        # 篩選高影響 + 唔要「開盤」
+
         high_impact = []
         for e in data:
             if e.get('impact') != 'High':
@@ -366,18 +403,18 @@ def get_fmp_calendar():
             if 'open' in event_name.lower() or '開盤' in event_name:
                 continue
             high_impact.append(e)
-        
+
         lines = ["📅 【今晚 0DTE 關鍵日曆（高影響）】："]
         if high_impact:
             for e in high_impact[:10]:
                 event_name = e.get('event', 'Unknown')
                 country = e.get('country', '')
                 time_str = e.get('date', '')[-8:-3]
-                
+
                 actual = e.get('actual')
                 estimate = e.get('estimate')
                 previous = e.get('previous')
-                
+
                 value_parts = []
                 if actual is not None:
                     value_parts.append(f"實際 {actual}")
@@ -385,15 +422,15 @@ def get_fmp_calendar():
                     value_parts.append(f"預期 {estimate}")
                 if previous is not None:
                     value_parts.append(f"前值 {previous}")
-                
+
                 value_str = " | ".join(value_parts) if value_parts else ""
-                
+
                 lines.append(f"   * {time_str} | {country} {event_name}")
                 if value_str:
                     lines.append(f"     └─ {value_str}")
         else:
             lines.append("   🟢 今日暫無高影響事件")
-        
+
         lines.extend([
             "",
             "🛡️ 【風控鐵律】：",
@@ -495,21 +532,19 @@ def get_nq_custom_chart_status():
 # ==================== NQ 數據（for Dashboard）====================
 
 def get_nq_key_levels_data():
-    """V19.2：攞 NQ 關鍵位（5日 H/L + R1/Pivot/S1）"""
     try:
         nq = yf.Ticker('NQ=F').history(period='5d', interval='1d')
         high_5d = float(nq['High'].max())
         low_5d = float(nq['Low'].min())
         current = float(nq['Close'].iloc[-1])
-        
-        # Pivot Points（用前日 RTH）
+
         high_p = float(nq['High'].iloc[-2])
         low_p = float(nq['Low'].iloc[-2])
         close_p = float(nq['Close'].iloc[-2])
         pivot = (high_p + low_p + close_p) / 3.0
         r1 = 2 * pivot - low_p
         s1 = 2 * pivot - high_p
-        
+
         return {
             'high': high_5d,
             'low': low_5d,
@@ -523,18 +558,17 @@ def get_nq_key_levels_data():
         return {'high': 0, 'low': 0, 'current': 0, 'r1': 0, 'pivot': 0, 's1': 0}
 
 def get_nq_ema_data():
-    """V19.1：攞 NQ 5m EMA 帶（for Dashboard）"""
     try:
         raw_df = yf.Ticker('NQ=F').history(period='1mo', interval='5m')
         if raw_df.empty or len(raw_df) < 100:
             return None
         calc_df = calculate_custom_indicators(raw_df)
         last = calc_df.iloc[-1]
-        
+
         band_vals = [float(v) for v in [last['EMA700'], last['EMA800'], last['EMA900'], last['EMA1000']] if not np.isnan(v)]
         if len(band_vals) < 2:
             return None
-        
+
         return {
             'current': float(last['Close']),
             'band_top': max(band_vals),
@@ -577,10 +611,18 @@ def fmt_dual_signal_body(sig):
 
     strength, strength_icon = get_strength(sig['ind_change_pct'])
 
+    win_rate = get_win_rate(sig['ticker'], lv, sig['type'])
+    win_tag = get_win_tag(win_rate)
+
+    if win_rate:
+        win_str = f" | 歷史勝率 {win_rate*100:.1f}%{win_tag}"
+    else:
+        win_str = ""
+
     return (
         f"      [{lv}][{ind_name}] {icon} {label_str}{sig['tag']} {strength_icon}{strength}："
         f"前{'高' if sig['type'] == '頂' else '低'} {sig['prev_price']:,.2f} ({time_str})\n"
-        f"            價: {price_pct} / {ind_name}: {ind_pct}"
+        f"            價: {price_pct} / {ind_name}: {ind_pct}{win_str}"
     )
 
 # ==================== 分組 ====================
@@ -693,7 +735,7 @@ def get_resonance(dual_mw, dual_dh):
     for s in dual_mw + dual_dh:
         key = (s['ticker'], s['type'])
         resonance.setdefault(key, set()).add(s['level'])
-    
+
     results = []
     for (ticker, type_), levels in resonance.items():
         if len(levels) >= 2:
@@ -704,36 +746,35 @@ def get_resonance(dual_mw, dual_dh):
                 'ticker': ticker, 'name': name, 'type': type_,
                 'levels': lvl_str, 'count': len(levels), 'stars': stars
             })
-    
+
     return sorted(results, key=lambda x: -x['count'])
 
 # ==================== 歷史紀錄 ====================
 
 def save_history(pivot_sigs, dual_mw, dual_dh):
-    """V19.0：合併 DIF + J，按 (ticker, level, 方向) 一行"""
     today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
-    
+
     grouped = {}
     for s in dual_mw + dual_dh:
         key = (s['ticker'], s['level'], s['type'])
         grouped.setdefault(key, []).append(s)
-    
+
     rows = []
     for (ticker, level, direction), sigs in grouped.items():
         info = ALL_TARGETS.get(ticker, {})
         name = info.get('name', ticker)
-        
+
         long_sigs = [s for s in sigs if s.get('lookback') == 'long']
         short_sigs = [s for s in sigs if s.get('lookback') == 'short']
         target_sigs = long_sigs if long_sigs else short_sigs
-        
+
         if not target_sigs:
             continue
-        
+
         dif_sig = next((s for s in target_sigs if s['ind'] == 'DIF'), None)
         j_sig = next((s for s in target_sigs if s['ind'] == 'J'), None)
         ref = dif_sig if dif_sig else j_sig
-        
+
         strengths = []
         if dif_sig:
             s1, _ = get_strength(dif_sig['ind_change_pct'])
@@ -741,22 +782,25 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
         if j_sig:
             s2, _ = get_strength(j_sig['ind_change_pct'])
             strengths.append(s2)
-        
+
         STRENGTH_RANK = {'弱': 1, '中': 2, '強': 3}
         RANK_TO_STRENGTH = {1: '弱', 2: '中', 3: '強'}
-        
+
         base_rank = max(STRENGTH_RANK.get(s, 1) for s in strengths) if strengths else 1
-        
+
         has_dif = dif_sig is not None
         has_j = j_sig is not None
         if has_dif and has_j:
             base_rank = min(base_rank + 1, 3)
-        
+
         final_strength = RANK_TO_STRENGTH[base_rank]
         resonance = '雙指標' if (has_dif and has_j) else '單指標'
         lookback = 'long' if long_sigs else 'short'
         tag = ref.get('tag', '')
-        
+
+        win_rate = get_win_rate(ticker, level, direction)
+        win_rate_str = f"{win_rate*100:.1f}%" if win_rate else ""
+
         rows.append({
             '日期': today, '標的': ticker, '中文名': name,
             '週期': level, '方向': direction,
@@ -769,11 +813,12 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
             'J有冇': '有' if has_j else '冇',
             '強度': final_strength, 'lookback': lookback,
             'tag': tag, '共振': resonance,
+            '歷史勝率': win_rate_str,
         })
-    
+
     if rows:
         new_df = pd.DataFrame(rows)
-        
+
         if os.path.exists('history.csv'):
             try:
                 old_df = pd.read_csv('history.csv', encoding='utf-8-sig')
@@ -785,11 +830,10 @@ def save_history(pivot_sigs, dual_mw, dual_dh):
                 combined = new_df
         else:
             combined = new_df
-        
+
         combined.to_csv('history.csv', index=False, encoding='utf-8-sig')
         print(f"✅ 寫入 history.csv ({len(rows)} 行，總共 {len(combined)} 行)", flush=True)
-    
-    # ===== V19.1：寫入 dashboard_data.json =====
+
     try:
         dashboard_data = {
             'nq_key_levels': get_nq_key_levels_data(),
@@ -808,11 +852,11 @@ def send_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("[Telegram] 未設定 token 或 chat_id，跳過", flush=True)
         return
-    
+
     try:
         if len(text) > 4000:
             text = text[:4000] + "\n...(截斷)"
-        
+
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         r = requests.post(url, json={
             'chat_id': TELEGRAM_CHAT_ID,
@@ -838,7 +882,7 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
                "🏛️ 大勢背景：大週期結構常態，順應日內動能。"
 
     L = [
-        f"⚡ Radar V19.1 0DTE 全宏觀晨報 | {now} HKT",
+        f"⚡ Radar V20.0 0DTE 全宏觀晨報 | {now} HKT",
         sep, "🏛️ 大勢背景（月 / 週線）", sep,
     ]
 
@@ -875,17 +919,16 @@ def build_email_body(pivot_sigs, dual_dh, dual_mw):
 def main():
     try:
         dashboard_only = is_dashboard_only()
-        
+
         print(f"=== 模式: {'Dashboard Only (21:00)' if dashboard_only else 'Full (06:00)'} ===", flush=True)
-        
-        # 21:00 模式：只 update Dashboard
+
         if dashboard_only:
             print(f"=== 21:00 Dashboard 更新 ===", flush=True)
-            
+
             if os.path.exists('history.csv'):
                 df = pd.read_csv('history.csv', encoding='utf-8-sig')
                 print(f"✅ 讀 history.csv ({len(df)} 行)", flush=True)
-            
+
             try:
                 dashboard_data = {
                     'nq_key_levels': get_nq_key_levels_data(),
@@ -897,11 +940,10 @@ def main():
                 print(f"✅ 寫入 dashboard_data.json", flush=True)
             except Exception as e:
                 print(f"⚠️ 寫 dashboard_data.json 失敗: {e}", flush=True)
-            
+
             print("✅ 21:00 Dashboard 更新完成", flush=True)
             return
-        
-        # 06:00 模式：正常流程
+
         print(f"=== 掃描 {len(ALL_TARGETS)} 個標的 ===", flush=True)
 
         pivot_sigs = []
@@ -933,7 +975,7 @@ def main():
         body = build_email_body(pivot_sigs, dual_dh, dual_mw)
 
         msg = MIMEMultipart()
-        msg['Subject'] = f"⚡ [0DTE 雷達 V19.1] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
+        msg['Subject'] = f"⚡ [0DTE 雷達 V20.0] 大勢+今晚雙重背離 ({datetime.now().strftime('%m/%d')})"
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = EMAIL_CONFIG['receiver_email']
         msg.attach(MIMEText(
