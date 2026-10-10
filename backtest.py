@@ -1,5 +1,5 @@
-# backtest.py - 回測雷達（M / W / D / 4H）
-# 用過去數據，模擬每日雷達，計算成功率
+# backtest.py - 回測雷達（10 年）
+# 用更多歷史數據，樣本更可靠
 
 import yfinance as yf
 import pandas as pd
@@ -15,10 +15,10 @@ TICKER = 'NQ=F'
 LEVELS = ['M', 'W', 'D', '4H']
 
 INTERVAL_MAP = {
-    'M':  ('1mo', '5y', 30),
-    'W':  ('1wk', '3y', 30),
-    'D':  ('1d',  '1y', 30),
-    '4H': ('1h',  '60d', 60),
+    'M':  ('1mo', '10y', 30),   # 10 年
+    'W':  ('1wk', '10y', 30),   # 10 年
+    'D':  ('1d',  '10y', 30),   # 10 年
+    '4H': ('1h',  '60d', 60),   # Yahoo 限制 60d
 }
 
 DUAL_LB_CONFIG = {
@@ -104,8 +104,6 @@ def check_dual_lookback(price, indicator, short_lb=5, long_lb=20,
     return result
 
 
-# ==================== 主回測 ====================
-
 def backtest_level(df, lv):
     calc_df = df.copy()
     calc_df['DIF'], _, _ = calculate_macd(calc_df['Close'])
@@ -173,7 +171,7 @@ def calc_stats(signals, df, direction, t_days):
 
 
 def main():
-    print(f"=== 雷達回測 {TICKER} ===\n")
+    print(f"=== 雷達回測 {TICKER}（10 年）===\n")
 
     all_stats = {}
 
