@@ -1,8 +1,8 @@
-# build_site.py - 生成 index.html Dashboard V20.0
+# build_site.py - 生成 index.html Dashboard V20.2
 # ============================================
-# V20.0 改動（相對 V19.1）：
-#   1. 加回測區（從 backtest_results.json 讀）
-#   2. 加歷史勝率欄
+# V20.2 改動：
+#   1. 回測區合併「底背離 + 頂背離」一個表
+#   2. 回測區欄位可排序
 # ============================================
 
 import os
@@ -44,7 +44,6 @@ def build_html():
         except Exception as e:
             print(f"⚠️ 讀 dashboard_data.json 失敗: {e}")
 
-    # 讀 backtest_results.json
     backtest_data = {}
     if os.path.exists('backtest_results.json'):
         try:
@@ -174,7 +173,7 @@ def build_html():
                     else:
                         val = '<span class="resonance-badge resonance-single">單指標</span>'
                 elif col == '歷史勝率':
-                    if val and val != '':
+                    if val and str(val) != 'nan' and str(val) != '':
                         wr = float(str(val).replace('%', ''))
                         if wr >= 65:
                             val = f'<span style="color:#3fb950;font-weight:bold;">{val} ⭐⭐⭐</span>'
@@ -296,46 +295,65 @@ def build_html():
     else:
         nq_html = '<p style="color:var(--muted);">暫無數據</p>'
 
-    # ===== 回測區 HTML =====
+    # ===== 回測區 HTML（可排序）=====
     backtest_html = ""
     if backtest_data:
-        rows_html = []
+        rows_data = []
         for ticker, levels in backtest_data.items():
             for lv, dirs in levels.items():
-                if '底' in dirs and dirs['底'].get('T+5'):
-                    s = dirs['底']['T+5']
-                    win_rate = s['winRate']
-                    if win_rate >= 65:
-                        win_class = 'color:#3fb950;font-weight:bold;'
-                    elif win_rate >= 55:
-                        win_class = 'color:#d29922;font-weight:bold;'
-                    else:
-                        win_class = 'color:#f85149;'
-                    rows_html.append(f'''
-                    <tr>
-                      <td>{ticker}</td>
-                      <td>{lv}</td>
-                      <td style="{win_class}">{win_rate}%</td>
-                      <td>{s['count']}</td>
-                      <td>{s['avgChange']:+.2f}%</td>
-                    </tr>''')
-        if rows_html:
+                for direction in ['底', '頂']:
+                    if direction in dirs and dirs[direction].get('T+5'):
+                        s = dirs[direction]['T+5']
+                        rows_data.append({
+                            'ticker': ticker,
+                            'level': lv,
+                            'direction': direction,
+                            'winRate': s['winRate'],
+                            'count': s['count'],
+                            'avgChange': s['avgChange'],
+                        })
+
+        if rows_data:
+            body_rows = []
+            for r in rows_data:
+                win_rate = r['winRate']
+                if win_rate >= 65:
+                    win_class = 'color:#3fb950;font-weight:bold;'
+                elif win_rate >= 55:
+                    win_class = 'color:#d29922;font-weight:bold;'
+                else:
+                    win_class = 'color:#f85149;'
+
+                dir_icon = '🟢 底' if r['direction'] == '底' else '🔴 頂'
+
+                body_rows.append(f'''
+                <tr data-ticker="{r['ticker']}" data-level="{r['level']}" data-direction="{r['direction']}" data-winrate="{win_rate}" data-count="{r['count']}" data-avgchange="{r['avgChange']}">
+                  <td>{r['ticker']}</td>
+                  <td>{r['level']}</td>
+                  <td>{dir_icon}</td>
+                  <td style="{win_class}">{win_rate}%</td>
+                  <td>{r['count']}</td>
+                  <td>{r['avgChange']:+.2f}%</td>
+                </tr>''')
+
             backtest_html = f'''
             <div class="card">
-              <h2 style="margin-top:0;">📊 回測結果（10 年）— 底背離 T+5</h2>
-              <div class="scroll" style="max-height:400px;">
-                <table class="table">
+              <h2 style="margin-top:0;">📊 回測結果（10 年）— T+5 成功率</h2>
+              <p style="color:var(--muted);font-size:12px;margin-top:5px;">💡 撳欄位標題可以排序</p>
+              <div class="scroll" style="max-height:500px;">
+                <table class="table" id="backtest-table">
                   <thead>
                     <tr>
-                      <th>標的</th>
-                      <th>週期</th>
-                      <th>勝率</th>
-                      <th>樣本</th>
-                      <th>平均升跌</th>
+                      <th onclick="sortBacktest('ticker')" style="cursor:pointer;">標的 ↕</th>
+                      <th onclick="sortBacktest('level')" style="cursor:pointer;">週期 ↕</th>
+                      <th onclick="sortBacktest('direction')" style="cursor:pointer;">方向 ↕</th>
+                      <th onclick="sortBacktest('winrate')" style="cursor:pointer;">勝率 ↕</th>
+                      <th onclick="sortBacktest('count')" style="cursor:pointer;">樣本 ↕</th>
+                      <th onclick="sortBacktest('avgchange')" style="cursor:pointer;">平均升跌 ↕</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {''.join(rows_html)}
+                    {''.join(body_rows)}
                   </tbody>
                 </table>
               </div>
@@ -346,7 +364,7 @@ def build_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚡ 0DTE Radar Dashboard V20.0</title>
+<title>⚡ 0DTE Radar Dashboard V20.2</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * {{ box-sizing: border-box; }}
@@ -407,6 +425,9 @@ def build_html():
   }}
   table.table td {{ padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }}
   table.table tr {{ transition: background 0.2s; cursor: pointer; }}
+
+  #backtest-table th:hover {{ background: var(--border); }}
+  #backtest-table tr {{ cursor: default; }}
 
   tr.top-row {{ background: var(--top-bg); }}
   tr.top-row:hover {{ background: var(--top-hover); }}
@@ -516,7 +537,7 @@ def build_html():
 <div class="container">
 
 <h1>
-  <span>⚡ 0DTE Radar Dashboard V20.0</span>
+  <span>⚡ 0DTE Radar Dashboard V20.2</span>
   <button class="btn" onclick="toggleTheme()" id="theme-btn">🌙</button>
 </h1>
 <p style="color:var(--muted);">最後更新：{now_hkt} HKT</p>
@@ -617,7 +638,7 @@ def build_html():
 </div>
 
 <div class="footer">
-  ⚡ Radar V20.0 | Powered by GitHub Actions + GitHub Pages
+  ⚡ Radar V20.2 | Powered by GitHub Actions + GitHub Pages
 </div>
 
 </div>
@@ -706,6 +727,55 @@ function sortBy(key, btn) {{
   rows.forEach(r => tbody.appendChild(r));
   document.querySelectorAll('.controls .btn:not([data-filter])').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+}}
+
+// ===== 回測區排序 =====
+let backtestSortColumn = null;
+let backtestSortOrder = 'desc';
+
+function sortBacktest(column) {{
+  const tbody = document.querySelector('#backtest-table tbody');
+  if (!tbody) return;
+
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  if (backtestSortColumn === column) {{
+    backtestSortOrder = backtestSortOrder === 'asc' ? 'desc' : 'asc';
+  }} else {{
+    backtestSortColumn = column;
+    backtestSortOrder = 'desc';
+  }}
+
+  rows.sort((a, b) => {{
+    let valA, valB;
+
+    if (column === 'ticker') {{
+      valA = a.dataset.ticker || '';
+      valB = b.dataset.ticker || '';
+      return backtestSortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }} else if (column === 'level') {{
+      const order = {{'M': 1, 'W': 2, 'D': 3, '4H': 4}};
+      valA = order[a.dataset.level] || 99;
+      valB = order[b.dataset.level] || 99;
+    }} else if (column === 'direction') {{
+      valA = a.dataset.direction || '';
+      valB = b.dataset.direction || '';
+      return backtestSortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }} else if (column === 'winrate') {{
+      valA = parseFloat(a.dataset.winrate) || 0;
+      valB = parseFloat(b.dataset.winrate) || 0;
+    }} else if (column === 'count') {{
+      valA = parseInt(a.dataset.count) || 0;
+      valB = parseInt(b.dataset.count) || 0;
+    }} else if (column === 'avgchange') {{
+      valA = parseFloat(a.dataset.avgchange) || 0;
+      valB = parseFloat(b.dataset.avgchange) || 0;
+    }}
+
+    return backtestSortOrder === 'asc' ? valA - valB : valB - valA;
+  }});
+
+  rows.forEach(r => tbody.appendChild(r));
 }}
 
 function showDetail(row) {{
