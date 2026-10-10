@@ -35,20 +35,29 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-          
-      - name: Run backtest.py (只跑一次)
-        run: python backtest.py
+
+      - name: Run backtest.py (每 2 個月跑一次)
+        run: |
+          HKT_MONTH=$(TZ='Asia/Hong_Kong' date +%m)
+          if [ "$HKT_MONTH" = "01" ] || [ "$HKT_MONTH" = "03" ] || [ "$HKT_MONTH" = "05" ] || [ "$HKT_MONTH" = "07" ] || [ "$HKT_MONTH" = "09" ] || [ "$HKT_MONTH" = "11" ]; then
+            echo "=== 開始跑 backtest.py (HKT 月: $HKT_MONTH) ==="
+            python backtest.py
+          else
+            echo "=== 今個月唔跑 backtest.py (HKT 月: $HKT_MONTH) ==="
+          fi
+
       - name: Build Dashboard
         run: python build_site.py
 
-      - name: 保存 history.csv + index.html + dashboard_data.json
+      - name: 保存 history.csv + index.html + dashboard_data.json + backtest_results.json
         run: |
           git config user.name "radar-bot"
           git config user.email "bot@bot.com"
           git add history.csv index.html dashboard_data.json
+          git add backtest_results.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "冇變更，跳過 commit"
           else
-            git commit -m "update V19.1 ${{ github.run_number }}"
+            git commit -m "update V20.0 ${{ github.run_number }}"
             git push
           fi
