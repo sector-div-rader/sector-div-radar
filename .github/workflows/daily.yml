@@ -35,7 +35,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-
+          
+      - name: Run backtest.py (只跑一次)
+        run: python backtest.py
       - name: Build Dashboard
         run: python build_site.py
 
