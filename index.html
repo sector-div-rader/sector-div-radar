@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚡ 0DTE Radar Dashboard</title>
+<title>⚡ 0DTE Radar Dashboard V20.0</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -47,14 +47,14 @@
   .delta { font-size: 13px; font-weight: bold; }
   .delta.up { color: var(--top-color); }
   .delta.down { color: var(--bot-color); }
-  
+
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
   @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
-  
+
   .chart-container { position: relative; height: 250px; }
   .donut-container { position: relative; height: 200px; }
-  
+
   table.table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
   table.table th {
     background: linear-gradient(180deg, var(--card) 0%, var(--bg) 100%);
@@ -64,12 +64,12 @@
   }
   table.table td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.table tr { transition: background 0.2s; cursor: pointer; }
-  
+
   tr.top-row { background: var(--top-bg); }
   tr.top-row:hover { background: var(--top-hover); }
   tr.bot-row { background: var(--bot-bg); }
   tr.bot-row:hover { background: var(--bot-hover); }
-  
+
   .strength-bar {
     position: relative; width: 60px; height: 18px; background: var(--bg);
     border-radius: 9px; overflow: hidden; display: inline-block;
@@ -82,14 +82,14 @@
     position: relative; z-index: 1; font-size: 11px; font-weight: bold;
     color: white; line-height: 18px; padding-left: 6px;
   }
-  
+
   .resonance-badge {
     display: inline-block; padding: 2px 8px; border-radius: 10px;
     font-size: 11px; font-weight: bold;
   }
   .resonance-dual { background: #a371f7; color: white; }
   .resonance-single { background: #30363d; color: var(--muted); }
-  
+
   .controls {
     display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0;
     padding: 15px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -108,16 +108,16 @@
   }
   .search-input:focus { outline: none; border-color: var(--accent); }
   .label-text { color: var(--muted); font-size: 13px; }
-  
+
   .bar-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
   .bar-label { width: 80px; font-size: 13px; font-weight: bold; }
   .bar-track { flex: 1; height: 20px; background: var(--bg); border-radius: 10px; overflow: hidden; }
   .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, #1f6feb 100%); border-radius: 10px; }
   .bar-count { width: 40px; text-align: right; font-size: 13px; color: var(--muted); }
-  
+
   .resonance-item { padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--border); }
   .resonance-item:last-child { border-bottom: none; }
-  
+
   .keylevel { margin: 15px 0; }
   .keylevel-bar {
     position: relative; height: 30px;
@@ -129,7 +129,7 @@
     background: white; border-radius: 2px; box-shadow: 0 0 8px rgba(255,255,255,0.8);
   }
   .keylevel-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--muted); }
-  
+
   .modal {
     display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.7); z-index: 1000;
@@ -150,13 +150,13 @@
   .modal-row:last-child { border-bottom: none; }
   .modal-label { color: var(--muted); }
   .modal-value { font-weight: bold; }
-  
+
   .footer {
     margin-top: 40px; text-align: center; color: var(--muted);
     font-size: 12px; border-top: 1px solid var(--border); padding-top: 20px;
   }
   .scroll { overflow-x: auto; max-height: 700px; overflow-y: auto; }
-  
+
   @media (max-width: 768px) {
     body { padding: 10px; }
     h1 { font-size: 20px; }
@@ -173,10 +173,10 @@
 <div class="container">
 
 <h1>
-  <span>⚡ 0DTE Radar Dashboard</span>
+  <span>⚡ 0DTE Radar Dashboard V20.0</span>
   <button class="btn" onclick="toggleTheme()" id="theme-btn">🌙</button>
 </h1>
-<p style="color:var(--muted);">最後更新：2026-10-10 18:36 HKT</p>
+<p style="color:var(--muted);">最後更新：2026-10-10 18:58 HKT</p>
 
 <div class="stats">
   <div class="stat-box">
@@ -289,6 +289,8 @@
   </div>
 </div>
 
+
+
 <h2>🔥 今日訊號</h2>
 
 <div class="controls">
@@ -298,25 +300,25 @@
   <button class="btn" data-filter="bot" onclick="filterRows('bot', this)">🟢 底</button>
   <button class="btn" data-filter="strong" onclick="filterRows('strong', this)">🔥 強</button>
   <button class="btn" data-filter="dual" onclick="filterRows('dual', this)">⭐⭐ 雙指標</button>
-  
+
   <span class="label-text" style="margin-left:20px;">排序：</span>
   <button class="btn" onclick="sortBy('strength', this)">按強度</button>
   <button class="btn" onclick="sortBy('ticker', this)">按標的</button>
-  
+
   <input type="text" class="search-input" placeholder="🔎 搜尋（可逗號分隔）..." oninput="searchRows(this.value)">
-  
+
   <button class="btn" onclick="exportCSV()" style="margin-left:auto;">📥 匯出 CSV</button>
 </div>
 
 <div class="card scroll">
   <table class="table" id="today-table">
-    <thead><tr><th>日期</th><th>標的</th><th>中文名</th><th>週期</th><th>方向</th><th>前高/低</th><th>現價</th><th>價變化%</th><th>DIF變化%</th><th>J變化%</th><th>DIF</th><th>J</th><th>強度</th><th>長/短</th><th>型態</th><th>共振</th></tr></thead>
-    <tbody><tr class="top-row" data-direction="頂" data-strength="中" data-resonance="雙指標" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-10", "level": "M", "direction": "頂", "prev_price": "30523.5", "current_price": "30698.75", "price_change": "0.57", "dif_change": "-7.58", "j_change": "-12.94", "has_dif": "有", "has_j": "有", "strength": "中", "lookback": "長", "tag": "新高", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>NQ=F</td><td>納斯達克100期貨</td><td>M</td><td>🔴 頂 ▼</td><td>30523.5</td><td>30698.75</td><td>0.57</td><td>-7.58%</td><td>-12.94%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>新高</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-10", "level": "W", "direction": "頂", "prev_price": "7805.0", "current_price": "7777.25", "price_change": "-0.36", "dif_change": "-27.14", "j_change": "-12.66", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>ES=F</td><td>標普500期貨</td><td>W</td><td>🔴 頂 ▼</td><td>7805.0</td><td>7777.25</td><td>-0.36</td><td>-27.14%</td><td>-12.66%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="^VIX" data-json='{"ticker": "^VIX", "name": "恐慌指數", "date": "2026-10-10", "level": "M", "direction": "頂", "prev_price": "16.45", "current_price": "16.34", "price_change": "-0.67", "dif_change": "-171.75", "j_change": "-53.3", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙頂", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>^VIX</td><td>恐慌指數</td><td>M</td><td>🔴 頂 ▼</td><td>16.45</td><td>16.34</td><td>-0.67</td><td>-171.75%</td><td>-53.3%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="CL=F" data-json='{"ticker": "CL=F", "name": "原油期貨", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "91.48", "current_price": "91.11", "price_change": "-0.4", "dif_change": "102.19", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "強", "lookback": "短", "tag": "新低", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>CL=F</td><td>原油期貨</td><td>W</td><td>🟢 底 ▲</td><td>91.48</td><td>91.11</td><td>-0.4</td><td>102.19%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>新低</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-resonance="單指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "W", "direction": "頂", "prev_price": "101.47", "current_price": "101.93", "price_change": "0.45", "dif_change": "-34.2", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "中", "lookback": "長", "tag": "新高", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>W</td><td>🔴 頂 ▼</td><td>101.47</td><td>101.93</td><td>0.45</td><td>-34.2%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>新高</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="IGV" data-json='{"ticker": "IGV", "name": "軟件服務ETF", "date": "2026-10-10", "level": "W", "direction": "頂", "prev_price": "109.5", "current_price": "108.43", "price_change": "-0.98", "dif_change": "-8.84", "j_change": "-21.36", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>IGV</td><td>軟件服務ETF</td><td>W</td><td>🔴 頂 ▼</td><td>109.5</td><td>108.43</td><td>-0.98</td><td>-8.84%</td><td>-21.36%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-10", "level": "M", "direction": "頂", "prev_price": "111.09", "current_price": "110.97", "price_change": "-0.11", "dif_change": "-6.87", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "弱", "lookback": "短", "tag": "雙頂", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLC</td><td>通訊服務ETF</td><td>M</td><td>🔴 頂 ▼</td><td>111.09</td><td>110.97</td><td>-0.11</td><td>-6.87%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-resonance="單指標" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "110.45", "current_price": "110.32", "price_change": "-0.11", "dif_change": "20.48", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "中", "lookback": "短", "tag": "新低", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLC</td><td>通訊服務ETF</td><td>W</td><td>🟢 底 ▲</td><td>110.45</td><td>110.32</td><td>-0.11</td><td>20.48%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>新低</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="XLF" data-json='{"ticker": "XLF", "name": "金融板塊ETF", "date": "2026-10-10", "level": "M", "direction": "底", "prev_price": "53.42", "current_price": "53.4", "price_change": "-0.04", "dif_change": "25.03", "j_change": "35.76", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "新低", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLF</td><td>金融板塊ETF</td><td>M</td><td>🟢 底 ▲</td><td>53.42</td><td>53.4</td><td>-0.04</td><td>25.03%</td><td>35.76%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>新低</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="XLI" data-json='{"ticker": "XLI", "name": "工業板塊ETF", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "169.29", "current_price": "169.95", "price_change": "0.39", "dif_change": "nan", "j_change": "133.86", "has_dif": "冇", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙底", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLI</td><td>工業板塊ETF</td><td>W</td><td>🟢 底 ▲</td><td>169.29</td><td>169.95</td><td>0.39</td><td>—</td><td>133.86%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="XLU" data-json='{"ticker": "XLU", "name": "公用事業ETF", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "39.51", "current_price": "39.83", "price_change": "0.81", "dif_change": "nan", "j_change": "144.08", "has_dif": "冇", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙底", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLU</td><td>公用事業ETF</td><td>W</td><td>🟢 底 ▲</td><td>39.51</td><td>39.83</td><td>0.81</td><td>—</td><td>144.08%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-10", "level": "D", "direction": "頂", "prev_price": "7874.0", "current_price": "7859.75", "price_change": "-0.18", "dif_change": "nan", "j_change": "-6.54", "has_dif": "冇", "has_j": "有", "strength": "弱", "lookback": "長", "tag": "雙頂", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>ES=F</td><td>標普500期貨</td><td>D</td><td>🔴 頂 ▼</td><td>7874.0</td><td>7859.75</td><td>-0.18</td><td>—</td><td>-6.54%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-10", "level": "4H", "direction": "底", "prev_price": "7839.5", "current_price": "7859.75", "price_change": "0.26", "dif_change": "333.85", "j_change": "48.47", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙底", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>ES=F</td><td>標普500期貨</td><td>4H</td><td>🟢 底 ▲</td><td>7839.5</td><td>7859.75</td><td>0.26</td><td>333.85%</td><td>48.47%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-10", "level": "4H", "direction": "頂", "prev_price": "51935.0", "current_price": "51926.0", "price_change": "-0.02", "dif_change": "nan", "j_change": "-6.7", "has_dif": "冇", "has_j": "有", "strength": "弱", "lookback": "長", "tag": "雙頂", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>4H</td><td>🔴 頂 ▼</td><td>51935.0</td><td>51926.0</td><td>-0.02</td><td>—</td><td>-6.7%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "D", "direction": "頂", "prev_price": "102.24", "current_price": "102.23", "price_change": "-0.01", "dif_change": "-5.59", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "弱", "lookback": "長", "tag": "雙頂", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>D</td><td>🔴 頂 ▼</td><td>102.24</td><td>102.23</td><td>-0.01</td><td>-5.59%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-resonance="單指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "D", "direction": "底", "prev_price": "101.83", "current_price": "102.23", "price_change": "0.39", "dif_change": "nan", "j_change": "20.19", "has_dif": "冇", "has_j": "有", "strength": "中", "lookback": "短", "tag": "雙底", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>D</td><td>🟢 底 ▲</td><td>101.83</td><td>102.23</td><td>0.39</td><td>—</td><td>20.19%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "4H", "direction": "頂", "prev_price": "102.42", "current_price": "102.23", "price_change": "-0.19", "dif_change": "-64.85", "j_change": "-23.26", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🔴 頂 ▼</td><td>102.42</td><td>102.23</td><td>-0.19</td><td>-64.85%</td><td>-23.26%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "4H", "direction": "底", "prev_price": "102.02", "current_price": "102.23", "price_change": "0.21", "dif_change": "634.33", "j_change": "5398.1", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙底", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🟢 底 ▲</td><td>102.02</td><td>102.23</td><td>0.21</td><td>634.33%</td><td>5398.1%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="^TNX" data-json='{"ticker": "^TNX", "name": "美債10年收益率", "date": "2026-10-10", "level": "4H", "direction": "底", "prev_price": "5.23", "current_price": "5.24", "price_change": "0.25", "dif_change": "nan", "j_change": "152.15", "has_dif": "冇", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙底", "resonance": "單指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>^TNX</td><td>美債10年收益率</td><td>4H</td><td>🟢 底 ▲</td><td>5.23</td><td>5.24</td><td>0.25</td><td>—</td><td>152.15%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-10", "level": "D", "direction": "底", "prev_price": "109.94", "current_price": "110.36", "price_change": "0.39", "dif_change": "33.57", "j_change": "811.67", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙底", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLC</td><td>通訊服務ETF</td><td>D</td><td>🟢 底 ▲</td><td>109.94</td><td>110.36</td><td>0.39</td><td>33.57%</td><td>811.67%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="XLV" data-json='{"ticker": "XLV", "name": "醫療保健ETF", "date": "2026-10-10", "level": "D", "direction": "頂", "prev_price": "171.26", "current_price": "170.79", "price_change": "-0.27", "dif_change": "-69.63", "j_change": "-19.83", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLV</td><td>醫療保健ETF</td><td>D</td><td>🔴 頂 ▼</td><td>171.26</td><td>170.79</td><td>-0.27</td><td>-69.63%</td><td>-19.83%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td></tr></tbody>
+    <thead><tr><th>日期</th><th>標的</th><th>中文名</th><th>週期</th><th>方向</th><th>前高/低</th><th>現價</th><th>價變化%</th><th>DIF變化%</th><th>J變化%</th><th>DIF</th><th>J</th><th>強度</th><th>長/短</th><th>型態</th><th>共振</th><th>歷史勝率</th></tr></thead>
+    <tbody><tr class="top-row" data-direction="頂" data-strength="中" data-resonance="雙指標" data-ticker="NQ=F" data-json='{"ticker": "NQ=F", "name": "納斯達克100期貨", "date": "2026-10-10", "level": "M", "direction": "頂", "prev_price": "30523.5", "current_price": "30698.75", "price_change": "0.57", "dif_change": "-7.58", "j_change": "-12.94", "has_dif": "有", "has_j": "有", "strength": "中", "lookback": "長", "tag": "新高", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>NQ=F</td><td>納斯達克100期貨</td><td>M</td><td>🔴 頂 ▼</td><td>30523.5</td><td>30698.75</td><td>0.57</td><td>-7.58%</td><td>-12.94%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>新高</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-10", "level": "W", "direction": "頂", "prev_price": "7805.0", "current_price": "7777.25", "price_change": "-0.36", "dif_change": "-27.14", "j_change": "-12.66", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>ES=F</td><td>標普500期貨</td><td>W</td><td>🔴 頂 ▼</td><td>7805.0</td><td>7777.25</td><td>-0.36</td><td>-27.14%</td><td>-12.66%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="^VIX" data-json='{"ticker": "^VIX", "name": "恐慌指數", "date": "2026-10-10", "level": "M", "direction": "頂", "prev_price": "16.45", "current_price": "16.34", "price_change": "-0.67", "dif_change": "-171.75", "j_change": "-53.3", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙頂", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>^VIX</td><td>恐慌指數</td><td>M</td><td>🔴 頂 ▼</td><td>16.45</td><td>16.34</td><td>-0.67</td><td>-171.75%</td><td>-53.3%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="CL=F" data-json='{"ticker": "CL=F", "name": "原油期貨", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "91.48", "current_price": "91.11", "price_change": "-0.4", "dif_change": "102.19", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "強", "lookback": "短", "tag": "新低", "resonance": "單指標", "win_rate": "57.6%"}' onclick="showDetail(this)"><td>2026-10-10</td><td>CL=F</td><td>原油期貨</td><td>W</td><td>🟢 底 ▲</td><td>91.48</td><td>91.11</td><td>-0.4</td><td>102.19%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>新低</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#d29922;font-weight:bold;">57.6% ⭐⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="中" data-resonance="單指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "W", "direction": "頂", "prev_price": "101.47", "current_price": "101.93", "price_change": "0.45", "dif_change": "-34.2", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "中", "lookback": "長", "tag": "新高", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>W</td><td>🔴 頂 ▼</td><td>101.47</td><td>101.93</td><td>0.45</td><td>-34.2%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>長</td><td>新高</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="IGV" data-json='{"ticker": "IGV", "name": "軟件服務ETF", "date": "2026-10-10", "level": "W", "direction": "頂", "prev_price": "109.5", "current_price": "108.43", "price_change": "-0.98", "dif_change": "-8.84", "j_change": "-21.36", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>IGV</td><td>軟件服務ETF</td><td>W</td><td>🔴 頂 ▼</td><td>109.5</td><td>108.43</td><td>-0.98</td><td>-8.84%</td><td>-21.36%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-10", "level": "M", "direction": "頂", "prev_price": "111.09", "current_price": "110.97", "price_change": "-0.11", "dif_change": "-6.87", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "弱", "lookback": "短", "tag": "雙頂", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLC</td><td>通訊服務ETF</td><td>M</td><td>🔴 頂 ▼</td><td>111.09</td><td>110.97</td><td>-0.11</td><td>-6.87%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>短</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-resonance="單指標" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "110.45", "current_price": "110.32", "price_change": "-0.11", "dif_change": "20.48", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "中", "lookback": "短", "tag": "新低", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLC</td><td>通訊服務ETF</td><td>W</td><td>🟢 底 ▲</td><td>110.45</td><td>110.32</td><td>-0.11</td><td>20.48%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>新低</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="XLF" data-json='{"ticker": "XLF", "name": "金融板塊ETF", "date": "2026-10-10", "level": "M", "direction": "底", "prev_price": "53.42", "current_price": "53.4", "price_change": "-0.04", "dif_change": "25.03", "j_change": "35.76", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "新低", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLF</td><td>金融板塊ETF</td><td>M</td><td>🟢 底 ▲</td><td>53.42</td><td>53.4</td><td>-0.04</td><td>25.03%</td><td>35.76%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>新低</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="XLI" data-json='{"ticker": "XLI", "name": "工業板塊ETF", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "169.29", "current_price": "169.95", "price_change": "0.39", "dif_change": "nan", "j_change": "133.86", "has_dif": "冇", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙底", "resonance": "單指標", "win_rate": "65.4%"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLI</td><td>工業板塊ETF</td><td>W</td><td>🟢 底 ▲</td><td>169.29</td><td>169.95</td><td>0.39</td><td>—</td><td>133.86%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#3fb950;font-weight:bold;">65.4% ⭐⭐⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="XLU" data-json='{"ticker": "XLU", "name": "公用事業ETF", "date": "2026-10-10", "level": "W", "direction": "底", "prev_price": "39.51", "current_price": "39.83", "price_change": "0.81", "dif_change": "nan", "j_change": "144.08", "has_dif": "冇", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙底", "resonance": "單指標", "win_rate": "71.8%"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLU</td><td>公用事業ETF</td><td>W</td><td>🟢 底 ▲</td><td>39.51</td><td>39.83</td><td>0.81</td><td>—</td><td>144.08%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#3fb950;font-weight:bold;">71.8% ⭐⭐⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-10", "level": "D", "direction": "頂", "prev_price": "7874.0", "current_price": "7859.75", "price_change": "-0.18", "dif_change": "nan", "j_change": "-6.54", "has_dif": "冇", "has_j": "有", "strength": "弱", "lookback": "長", "tag": "雙頂", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>ES=F</td><td>標普500期貨</td><td>D</td><td>🔴 頂 ▼</td><td>7874.0</td><td>7859.75</td><td>-0.18</td><td>—</td><td>-6.54%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="ES=F" data-json='{"ticker": "ES=F", "name": "標普500期貨", "date": "2026-10-10", "level": "4H", "direction": "底", "prev_price": "7839.5", "current_price": "7859.75", "price_change": "0.26", "dif_change": "333.66", "j_change": "48.32", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙底", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>ES=F</td><td>標普500期貨</td><td>4H</td><td>🟢 底 ▲</td><td>7839.5</td><td>7859.75</td><td>0.26</td><td>333.66%</td><td>48.32%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="YM=F" data-json='{"ticker": "YM=F", "name": "道瓊斯工業期貨", "date": "2026-10-10", "level": "4H", "direction": "頂", "prev_price": "51933.0", "current_price": "51926.0", "price_change": "-0.01", "dif_change": "nan", "j_change": "-6.64", "has_dif": "冇", "has_j": "有", "strength": "弱", "lookback": "長", "tag": "雙頂", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>YM=F</td><td>道瓊斯工業期貨</td><td>4H</td><td>🔴 頂 ▼</td><td>51933.0</td><td>51926.0</td><td>-0.01</td><td>—</td><td>-6.64%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="弱" data-resonance="單指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "D", "direction": "頂", "prev_price": "102.24", "current_price": "102.23", "price_change": "-0.01", "dif_change": "-5.59", "j_change": "nan", "has_dif": "有", "has_j": "冇", "strength": "弱", "lookback": "長", "tag": "雙頂", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>D</td><td>🔴 頂 ▼</td><td>102.24</td><td>102.23</td><td>-0.01</td><td>-5.59%</td><td>—</td><td>✅</td><td>—</td><td><div class="strength-bar"><div class="strength-fill strength-弱" style="width:30%;"></div><span class="strength-text">弱</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="中" data-resonance="單指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "D", "direction": "底", "prev_price": "101.83", "current_price": "102.23", "price_change": "0.39", "dif_change": "nan", "j_change": "20.19", "has_dif": "冇", "has_j": "有", "strength": "中", "lookback": "短", "tag": "雙底", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>D</td><td>🟢 底 ▲</td><td>101.83</td><td>102.23</td><td>0.39</td><td>—</td><td>20.19%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-中" style="width:60%;"></div><span class="strength-text">中</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "4H", "direction": "頂", "prev_price": "102.42", "current_price": "102.23", "price_change": "-0.19", "dif_change": "-64.85", "j_change": "-23.26", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🔴 頂 ▼</td><td>102.42</td><td>102.23</td><td>-0.19</td><td>-64.85%</td><td>-23.26%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="DX-Y.NYB" data-json='{"ticker": "DX-Y.NYB", "name": "美元指數", "date": "2026-10-10", "level": "4H", "direction": "底", "prev_price": "102.02", "current_price": "102.23", "price_change": "0.21", "dif_change": "634.33", "j_change": "5398.1", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙底", "resonance": "雙指標", "win_rate": "57.8%"}' onclick="showDetail(this)"><td>2026-10-10</td><td>DX-Y.NYB</td><td>美元指數</td><td>4H</td><td>🟢 底 ▲</td><td>102.02</td><td>102.23</td><td>0.21</td><td>634.33%</td><td>5398.1%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#d29922;font-weight:bold;">57.8% ⭐⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="單指標" data-ticker="^TNX" data-json='{"ticker": "^TNX", "name": "美債10年收益率", "date": "2026-10-10", "level": "4H", "direction": "底", "prev_price": "5.23", "current_price": "5.24", "price_change": "0.25", "dif_change": "nan", "j_change": "152.15", "has_dif": "冇", "has_j": "有", "strength": "強", "lookback": "短", "tag": "雙底", "resonance": "單指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>^TNX</td><td>美債10年收益率</td><td>4H</td><td>🟢 底 ▲</td><td>5.23</td><td>5.24</td><td>0.25</td><td>—</td><td>152.15%</td><td>—</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>短</td><td>雙底</td><td><span class="resonance-badge resonance-single">單指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="bot-row" data-direction="底" data-strength="強" data-resonance="雙指標" data-ticker="XLC" data-json='{"ticker": "XLC", "name": "通訊服務ETF", "date": "2026-10-10", "level": "D", "direction": "底", "prev_price": "109.94", "current_price": "110.36", "price_change": "0.39", "dif_change": "33.57", "j_change": "811.67", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙底", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLC</td><td>通訊服務ETF</td><td>D</td><td>🟢 底 ▲</td><td>109.94</td><td>110.36</td><td>0.39</td><td>33.57%</td><td>811.67%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙底</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr><tr class="top-row" data-direction="頂" data-strength="強" data-resonance="雙指標" data-ticker="XLV" data-json='{"ticker": "XLV", "name": "醫療保健ETF", "date": "2026-10-10", "level": "D", "direction": "頂", "prev_price": "171.26", "current_price": "170.79", "price_change": "-0.27", "dif_change": "-69.63", "j_change": "-19.83", "has_dif": "有", "has_j": "有", "strength": "強", "lookback": "長", "tag": "雙頂", "resonance": "雙指標", "win_rate": "nan"}' onclick="showDetail(this)"><td>2026-10-10</td><td>XLV</td><td>醫療保健ETF</td><td>D</td><td>🔴 頂 ▼</td><td>171.26</td><td>170.79</td><td>-0.27</td><td>-69.63%</td><td>-19.83%</td><td>✅</td><td>✅</td><td><div class="strength-bar"><div class="strength-fill strength-強" style="width:90%;"></div><span class="strength-text">強</span></div></td><td>長</td><td>雙頂</td><td><span class="resonance-badge resonance-dual">⭐⭐ 雙指標</span></td><td><span style="color:#f85149;">nan ⭐</span></td></tr></tbody>
   </table>
 </div>
 
 <div class="footer">
-  ⚡ Radar V19.1 | Powered by GitHub Actions + GitHub Pages
+  ⚡ Radar V20.0 | Powered by GitHub Actions + GitHub Pages
 </div>
 
 </div>
@@ -362,20 +364,20 @@ function searchRows(query) {
 function applyFilters(query = '') {
   const rows = document.querySelectorAll('#today-table tbody tr');
   const queries = query.toLowerCase().split(',').map(q => q.trim()).filter(q => q);
-  
+
   rows.forEach(row => {
     if (!row.dataset.direction) return;
     const direction = row.dataset.direction;
     const strength = row.dataset.strength;
     const resonance = row.dataset.resonance;
     const ticker = (row.dataset.ticker || '').toLowerCase();
-    
+
     let show = true;
     if (currentFilter === 'top' && direction !== '頂') show = false;
     if (currentFilter === 'bot' && direction !== '底') show = false;
     if (currentFilter === 'strong' && strength !== '強') show = false;
     if (currentFilter === 'dual' && resonance !== '雙指標') show = false;
-    
+
     if (queries.length > 0) {
       let matched = false;
       for (const q of queries) {
@@ -383,7 +385,7 @@ function applyFilters(query = '') {
       }
       if (!matched) show = false;
     }
-    
+
     row.style.display = show ? '' : 'none';
   });
 }
@@ -392,7 +394,7 @@ function sortBy(key, btn) {
   const tbody = document.querySelector('#today-table tbody');
   const rows = Array.from(tbody.querySelectorAll('tr[data-direction]'));
   const strengthOrder = {'強': 1, '中': 2, '弱': 3};
-  
+
   rows.sort((a, b) => {
     if (key === 'strength') {
       return (strengthOrder[a.dataset.strength] || 9) - (strengthOrder[b.dataset.strength] || 9);
@@ -401,7 +403,7 @@ function sortBy(key, btn) {
     }
     return 0;
   });
-  
+
   rows.forEach(r => tbody.appendChild(r));
   document.querySelectorAll('.controls .btn:not([data-filter])').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -412,7 +414,7 @@ function showDetail(row) {
     const data = JSON.parse(row.dataset.json.replace(/&#39;/g, "'"));
     document.getElementById('modal-title').textContent = `${data.name} (${data.ticker})`;
     const body = document.getElementById('modal-body');
-    
+
     const dirIcon = data.direction === '頂' ? '🔴 頂背離' : '🟢 底背離';
     const rows = [
       ['日期', data.date], ['週期', data.level], ['方向', dirIcon],
@@ -423,12 +425,13 @@ function showDetail(row) {
       ['J 變化', data.j_change ? data.j_change + '%' : '—'],
       ['DIF 有冇', data.has_dif], ['J 有冇', data.has_j],
       ['強度', data.strength], ['共振', data.resonance],
+      ['歷史勝率', data.win_rate || '—'],
     ];
-    
+
     body.innerHTML = rows.map(([k, v]) => 
       `<div class="modal-row"><span class="modal-label">${k}</span><span class="modal-value">${v}</span></div>`
     ).join('');
-    
+
     document.getElementById('modal').classList.add('active');
   } catch(e) { console.error(e); }
 }
@@ -440,7 +443,7 @@ function closeModal() {
 function exportCSV() {
   const rows = document.querySelectorAll('#today-table tbody tr[data-direction]');
   const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
-  
+
   const headers = Array.from(document.querySelectorAll('#today-table thead th')).map(th => th.innerText.trim());
   let csv = headers.join(',') + '\n';
   visibleRows.forEach(r => {
@@ -451,7 +454,7 @@ function exportCSV() {
     });
     csv += cells.join(',') + '\n';
   });
-  
+
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -508,7 +511,6 @@ if (donutCtx) {
   });
 }
 
-// NQ Key Level
 const nqBar = document.getElementById('nq-bar');
 if (nqBar) {
   const pct = parseFloat(nqBar.dataset.pct || '50');
