@@ -1,5 +1,5 @@
-# backtest.py - 回測雷達（10 年）
-# 用更多歷史數據，樣本更可靠
+# backtest.py - 回測雷達（15 個標的）
+# 唔包括核心 NQ / ES / YM
 
 import yfinance as yf
 import pandas as pd
@@ -11,14 +11,19 @@ yf.set_tz_cache_location("/tmp/yf_cache")
 
 # ==================== 參數 ====================
 
-TICKER = 'NQ=F'
+TICKERS = [
+    '^VIX', 'GC=F', 'CL=F', 'DX-Y.NYB', '^TNX',
+    'SMH', 'IGV', 'XLC', 'XLY', 'XLF',
+    'XLE', 'XLI', 'XLV', 'XLP', 'XLU',
+]
+
 LEVELS = ['M', 'W', 'D', '4H']
 
 INTERVAL_MAP = {
-    'M':  ('1mo', '10y', 30),   # 10 年
-    'W':  ('1wk', '10y', 30),   # 10 年
-    'D':  ('1d',  '10y', 30),   # 10 年
-    '4H': ('1h',  '60d', 60),   # Yahoo 限制 60d
+    'M':  ('1mo', '10y', 30),
+    'W':  ('1wk', '10y', 30),
+    'D':  ('1d',  '10y', 30),
+    '4H': ('1h',  '60d', 60),
 }
 
 DUAL_LB_CONFIG = {
@@ -130,7 +135,6 @@ def backtest_level(df, lv):
                     'type': sig['type'],
                     'tag': sig['tag'],
                     'entry_price': float(sub['Close'].iloc[-1]),
-                    'lookback': 'long',
                 })
 
     return signals
@@ -171,56 +175,110 @@ def calc_stats(signals, df, direction, t_days):
 
 
 def main():
-    print(f"=== 雷達回測 {TICKER}（10 年）===\n")
+    print(f"=== 雷達回測（15 個標的）===\n")
 
-    all_stats = {}
+    all_results = {}
 
-    for lv in LEVELS:
-        itv, per, _ = INTERVAL_MAP[lv]
-        print(f"下載 {TICKER} {lv}（{per}）...")
+    for ticker in TICKERS:
+        print(f"\n{'='*60}")
+        print(f"回測 {ticker}")
+        print(f"{'='*60}")
 
-        raw_df = yf.Ticker(TICKER).history(period=per, interval=itv)
+        all_results[ticker] = {}
 
-        if lv == '4H' and not raw_df.empty:
-            raw_df = raw_df.resample('4h').agg({
-                'Open': 'first', 'High': 'max', 'Low': 'min',
-                'Close': 'last', 'Volume': 'sum'
-            }).dropna()
+        for lv in LEVELS:
+            itv, per, _ = INTERVAL_MAP[lv]
+            print(f"  下載 {ticker} {lv}（{per}）...")
 
-        if len(raw_df) < 100:
-            print(f"  ⚠️ 數據不足，跳過")
-            continue
+            try:
+                raw_df = yf.Ticker(ticker).history(period=per, interval=itv)
 
-        print(f"  數據：{len(raw_df)} 根")
+                if lv == '4H' and not raw_df.empty:
+                    raw_df = raw_df.resample('4h').agg({
+                        'Open': 'first', 'High': 'max', 'Low': 'min',
+                        'Close': 'last', 'Volume': 'sum'
+                    }).dropna()
 
-        signals = backtest_level(raw_df, lv)
-        print(f"  訊號數：{len(signals)}")
+                if len(raw_df) < 100:
+                    print(f"    ⚠️ 數據不足，跳過")
+                    continue
 
-        all_stats[lv] = {}
+                print(f"    數據：{len(raw_df)} 根")
 
-        for direction in ['頂', '底']:
-            dir_signals = [s for s in signals if s['type'] == direction]
-            all_stats[lv][direction] = {
-                'total': len(dir_signals),
-                'T+1': calc_stats(signals, raw_df, direction, 1),
-                'T+3': calc_stats(signals, raw_df, direction, 3),
-                'T+5': calc_stats(signals, raw_df, direction, 5),
-            }
+                signals = backtest_level(raw_df, lv)
+                print(f"    訊號數：{len(signals)}")
 
+                all_results[ticker][lv] = {}
+
+                for direction in ['頂', '底']:
+                    dir_signals = [s for s in signals if s['type'] == direction]
+                    all_results[ticker][lv][direction] = {
+                        'total': len(dir_signals),
+                        'T+1': calc_stats(signals, raw_df, direction, 1),
+                        'T+3': calc_stats(signals, raw_df, direction, 3),
+                        'T+5': calc_stats(signals, raw_df, direction, 5),
+                    }
+            except Exception as e:
+                print(f"    ⚠️ 失敗：{e}")
+
+    # ===== 總結表 =====
     print("\n" + "=" * 60)
-    print("回測結果")
+    print("回測結果總結")
     print("=" * 60)
 
-    for lv, dirs in all_stats.items():
-        print(f"\n【{lv}】")
-        for direction, data in dirs.items():
-            print(f"\n  {direction}背離（總數：{data['total']}）")
-            for t in ['T+1', 'T+3', 'T+5']:
-                s = data[t]
+    print("\n【底背離 T+5 成功率】")
+    print(f"{'標的':<12} {'M':<10} {'W':<10} {'D':<10} {'4H':<10}")
+    print("-" * 55)
+    for ticker in TICKERS:
+        row = f"{ticker:<12}"
+        for lv in LEVELS:
+            if ticker in all_results and lv in all_results[ticker] and '底' in all_results[ticker][lv]:
+                s = all_results[ticker][lv]['底']['T+5']
                 if s:
-                    print(f"    {t}: 成功率 {s['winRate']}% | 平均 {s['avgChange']:+.2f}% | 樣本 {s['count']}")
+                    row += f" {s['winRate']:>6.1f}%  "
                 else:
-                    print(f"    {t}: 冇數據")
+                    row += f" {'-':<8}"
+            else:
+                row += f" {'-':<8}"
+        print(row)
+
+    print("\n【頂背離 T+5 成功率】")
+    print(f"{'標的':<12} {'M':<10} {'W':<10} {'D':<10} {'4H':<10}")
+    print("-" * 55)
+    for ticker in TICKERS:
+        row = f"{ticker:<12}"
+        for lv in LEVELS:
+            if ticker in all_results and lv in all_results[ticker] and '頂' in all_results[ticker][lv]:
+                s = all_results[ticker][lv]['頂']['T+5']
+                if s:
+                    row += f" {s['winRate']:>6.1f}%  "
+                else:
+                    row += f" {'-':<8}"
+            else:
+                row += f" {'-':<8}"
+        print(row)
+
+    # ===== 詳細結果 =====
+    print("\n" + "=" * 60)
+    print("詳細結果")
+    print("=" * 60)
+
+    for ticker in TICKERS:
+        print(f"\n【{ticker}】")
+        for lv in LEVELS:
+            if ticker not in all_results or lv not in all_results[ticker]:
+                continue
+            print(f"\n  {lv}:")
+            for direction in ['頂', '底']:
+                data = all_results[ticker][lv].get(direction, {})
+                total = data.get('total', 0)
+                print(f"    {direction}背離（總數：{total}）")
+                for t in ['T+1', 'T+3', 'T+5']:
+                    s = data.get(t)
+                    if s:
+                        print(f"      {t}: 成功率 {s['winRate']}% | 平均 {s['avgChange']:+.2f}% | 樣本 {s['count']}")
+                    else:
+                        print(f"      {t}: 冇數據")
 
 
 if __name__ == '__main__':
