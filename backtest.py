@@ -1,9 +1,11 @@
 # backtest.py - 回測雷達（15 個標的）
-# 唔包括核心 NQ / ES / YM
+# 用 10 年歷史數據，模擬每日雷達，計算成功率
+# 輸出 backtest_results.json
 
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import json
 from datetime import datetime, timedelta
 from scipy.signal import find_peaks
 
@@ -258,27 +260,10 @@ def main():
                 row += f" {'-':<8}"
         print(row)
 
-    # ===== 詳細結果 =====
-    print("\n" + "=" * 60)
-    print("詳細結果")
-    print("=" * 60)
-
-    for ticker in TICKERS:
-        print(f"\n【{ticker}】")
-        for lv in LEVELS:
-            if ticker not in all_results or lv not in all_results[ticker]:
-                continue
-            print(f"\n  {lv}:")
-            for direction in ['頂', '底']:
-                data = all_results[ticker][lv].get(direction, {})
-                total = data.get('total', 0)
-                print(f"    {direction}背離（總數：{total}）")
-                for t in ['T+1', 'T+3', 'T+5']:
-                    s = data.get(t)
-                    if s:
-                        print(f"      {t}: 成功率 {s['winRate']}% | 平均 {s['avgChange']:+.2f}% | 樣本 {s['count']}")
-                    else:
-                        print(f"      {t}: 冇數據")
+    # ===== 輸出 JSON =====
+    with open('backtest_results.json', 'w', encoding='utf-8') as f:
+        json.dump(all_results, f, ensure_ascii=False, indent=2)
+    print(f"\n✅ 寫入 backtest_results.json")
 
 
 if __name__ == '__main__':
