@@ -1,106 +1,106 @@
 {
   "as_of": "2026-10-19",
-  "updated_at": "2026-10-19T20:51:09.756556Z",
+  "updated_at": "2026-10-19T21:13:55.194646Z",
   "source_note": "Eulerpool creation/redemption flows; volume-price proxy fallback",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
       "net_flow_1d": -704898583.0,
-      "net_flow_5d": -113341840.6142268,
-      "net_flow_20d": -73054738.68087582,
+      "net_flow_5d": -113361111.49932812,
+      "net_flow_20d": -73058888.82251096,
       "source": "eulerpool",
-      "rs_vs_spy": -824169574.1851315
+      "rs_vs_spy": -829425148.943314
     },
     {
       "symbol": "XLF",
       "name": "金融",
       "net_flow_1d": 662890883.0,
-      "net_flow_5d": 411422.19786202384,
-      "net_flow_20d": -32165876.258376855,
+      "net_flow_5d": 412129.2552893286,
+      "net_flow_20d": -32180495.56565423,
       "source": "eulerpool",
-      "rs_vs_spy": 543619891.8148685
+      "rs_vs_spy": 538364317.056686
     },
     {
       "symbol": "XLE",
       "name": "能源",
       "net_flow_1d": 53627428.0,
-      "net_flow_5d": 54773075.910251275,
-      "net_flow_20d": 176940562.7178748,
+      "net_flow_5d": 55158091.3116079,
+      "net_flow_20d": 177244031.63221875,
       "source": "eulerpool",
-      "rs_vs_spy": -65643563.18513158
+      "rs_vs_spy": -70899137.943314
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
       "net_flow_1d": 974995597.0,
-      "net_flow_5d": 34663095.39389205,
-      "net_flow_20d": 56249207.22045163,
+      "net_flow_5d": 34663839.230784394,
+      "net_flow_20d": 56249550.53869041,
       "source": "eulerpool",
-      "rs_vs_spy": 855724605.8148685
+      "rs_vs_spy": 850469031.056686
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
       "net_flow_1d": 265003766.0,
-      "net_flow_5d": 18762036.46718763,
-      "net_flow_20d": 15552699.989773035,
+      "net_flow_5d": 18762038.25336513,
+      "net_flow_20d": 15552700.444634126,
       "source": "eulerpool",
-      "rs_vs_spy": 145732774.81486842
+      "rs_vs_spy": 140477200.05668598
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
       "net_flow_1d": 188491880.0,
-      "net_flow_5d": 49215481.8870653,
-      "net_flow_20d": 67120100.50306788,
+      "net_flow_5d": 49216899.395866826,
+      "net_flow_20d": 67120790.3745364,
       "source": "eulerpool",
-      "rs_vs_spy": 69220888.81486842
+      "rs_vs_spy": 63965314.056686
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
       "net_flow_1d": 204822062.0,
-      "net_flow_5d": -8353010.851217528,
-      "net_flow_20d": 24993990.58927674,
+      "net_flow_5d": -8354328.867381539,
+      "net_flow_20d": 24994865.238283604,
       "source": "eulerpool",
-      "rs_vs_spy": 85551070.81486842
+      "rs_vs_spy": 80295496.056686
     },
     {
       "symbol": "XLI",
       "name": "工業",
       "net_flow_1d": -95958010.0,
-      "net_flow_5d": -20087057.856060795,
-      "net_flow_20d": -24050567.175308898,
+      "net_flow_5d": -20088649.648371477,
+      "net_flow_20d": -24051096.25093824,
       "source": "eulerpool",
-      "rs_vs_spy": -215229001.18513158
+      "rs_vs_spy": -220484575.94331402
     },
     {
       "symbol": "XLB",
       "name": "原材料",
       "net_flow_1d": 146959640.0,
-      "net_flow_5d": 16336184.186871666,
-      "net_flow_20d": 14434425.995723192,
+      "net_flow_5d": 16336225.890908986,
+      "net_flow_20d": 14434434.510975398,
       "source": "eulerpool",
-      "rs_vs_spy": 27688648.81486842
+      "rs_vs_spy": 22433074.056686
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
       "net_flow_1d": 20777904.0,
-      "net_flow_5d": -1935141.221666864,
-      "net_flow_20d": -6711150.851924228,
+      "net_flow_5d": -1935237.6928858273,
+      "net_flow_20d": -6711238.209413431,
       "source": "eulerpool",
-      "rs_vs_spy": -98493087.18513158
+      "rs_vs_spy": -103748661.943314
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
       "net_flow_1d": 295818974.0,
-      "net_flow_5d": -8490165.631458344,
-      "net_flow_20d": -29273997.21759343,
+      "net_flow_5d": -8490169.66167278,
+      "net_flow_20d": -29274000.57066393,
       "source": "eulerpool",
-      "rs_vs_spy": 176547982.81486842
+      "rs_vs_spy": 171292408.05668598
     }
   ]
 }
