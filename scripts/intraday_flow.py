@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 import base64
+import time  # 👈 加入 time
 from longbridge.openapi import QuoteContext, Config, OAuthBuilder
 
 SECTOR_ETFS = {
@@ -11,13 +12,13 @@ SECTOR_ETFS = {
 }
 
 def get_quote_context():
+    # ... (保持不變) ...
     client_id = os.environ.get("LONGBRIDGE_CLIENT_ID")
     token_cache_b64 = os.environ.get("LONGBRIDGE_OAUTH_TOKEN_CACHE_B64")
     
     if not client_id or not token_cache_b64:
-        raise RuntimeError("缺少 LONGBRIDGE_CLIENT_ID 或 LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 環境變數")
+        raise RuntimeError("缺少環境變數")
 
-    # 還原 Token 快取檔案
     cache_dir = os.path.expanduser("~/.longbridge/openapi/tokens/")
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = os.path.join(cache_dir, client_id)
@@ -25,20 +26,14 @@ def get_quote_context():
     with open(cache_path, "wb") as f:
         f.write(base64.b64decode(token_cache_b64))
 
-    oauth = OAuthBuilder(client_id).build(
-        lambda url: print(f"⚠️ Token 失效: {url}")
-    )
+    oauth = OAuthBuilder(client_id).build(lambda url: None) # 避免印出長 URL 塞爆 Log
     config = Config.from_oauth(oauth)
     return QuoteContext(config)
 
 def fetch_active_flow(ctx, symbol):
-    """
-    使用長橋 Trades 接口獲取最近約 1000 筆逐筆成交，
-    精確計算主動買入 (Up) 與主動賣出 (Down) 的淨成交金額。
-    """
     try:
-        # 注意：symbol 需要是 "XLK.US" 格式
-        trades = ctx.trades(f"{symbol}.US", 1000)
+        # 💡 優化：只攞最近 100 筆成交，已經足夠反映當下幾分鐘嘅主動買賣方向，大幅加快速度
+        trades = ctx.trades(f"{symbol}.US", 100)
         
         if not trades:
             return None
@@ -51,50 +46,40 @@ def fetch_active_flow(ctx, symbol):
             volume = t.volume
             amount = price * volume
             
-            if t.direction == 2:    # 2 = Up (主動買入)
+            if t.direction == 2:
                 active_buy_amount += amount
-            elif t.direction == 1:  # 1 = Down (主動賣出)
+            elif t.direction == 1:
                 active_sell_amount += amount
-            # 0 = Neutral，忽略不計
 
-        # 主動淨流入 = 主動買入金額 - 主動賣出金額
         net_flow_usd = active_buy_amount - active_sell_amount
+        time_str = datetime.datetime.fromtimestamp(trades[0].timestamp).strftime('%H:%M')
         
-        # 獲取最新成交時間
-        time_str = datetime.datetime.fromtimestamp(
-            trades[0].timestamp
-        ).strftime('%H:%M')
-        
-        return {
-            "time": time_str,
-            "main_net_inflow": float(net_flow_usd),
-        }
+        return {"time": time_str, "main_net_inflow": float(net_flow_usd)}
     except Exception as e:
         print(f"  [Longbridge] {symbol} 失敗: {e}")
         return None
 
 def main():
+    print("🔐 正在建立連線...")
     ctx = get_quote_context()
+    print("✅ 連線成功，開始拉取數據...\n")
     rows = []
     
     for symbol, name in SECTOR_ETFS.items():
-        print(f"處理 {symbol} ({name})...")
+        print(f"處理 {symbol} ({name})...", end=" ", flush=True) # 👈 印出進度
         flow = fetch_active_flow(ctx, symbol)
         
         if flow:
+            print(f"成功 (時間: {flow['time']}, 淨流: ${flow['main_net_inflow']:.2f})")
             rows.append({
-                "symbol": symbol,
-                "name": name,
-                "time": flow["time"],
-                "main_net_inflow": flow["main_net_inflow"],
+                "symbol": symbol, "name": name,
+                "time": flow["time"], "main_net_inflow": flow["main_net_inflow"],
             })
         else:
-            rows.append({
-                "symbol": symbol,
-                "name": name,
-                "main_net_inflow": None,
-                "time": "—",
-            })
+            print("失敗")
+            rows.append({"symbol": symbol, "name": name, "main_net_inflow": None, "time": "—"})
+        
+        time.sleep(0.5) # 👈 每隻 ETF 之間強制休息 0.5 秒，避免觸發長橋限流
 
     output = {
         "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
@@ -106,7 +91,7 @@ def main():
     with open("data/flow/intraday.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    print(f"完成，已寫入 data/flow/intraday.json（{len(rows)} 個板塊）")
+    print(f"\n完成，已寫入 data/flow/intraday.json（{len(rows)} 個板塊）")
 
 if __name__ == "__main__":
     main()
