@@ -27,18 +27,25 @@ def fetch_eulerpool_flow(client, symbol):
     """嘗試從 Eulerpool 拉真實 ETF 資金流。"""
     try:
         result = client.etf.flows(symbol)
-        # 加句 print 睇下 Eulerpool 到底回傳咩
-        print(f"  [Eulerpool Debug] {symbol} 返回: {result}")
         
         if isinstance(result, list) and len(result) > 0:
-            latest = result[-1]
+            # API 回傳係由新到舊，所以 [0] 係最新一日嘅數據
+            latest = result[0] 
+            
+            # 根據 Log，真實嘅 Key 係 'estimated_flow'
+            if 'estimated_flow' in latest and latest['estimated_flow'] is not None:
+                return float(latest['estimated_flow'])
+                
+            # 保險起見，保留其他可能嘅 Key 名
             for key in ("net_flow", "netFlow", "flow"):
-                if key in latest:
+                if key in latest and latest[key] is not None:
                     return float(latest[key])
+                    
         if isinstance(result, dict):
-            for key in ("net_flow", "netFlow", "flow"):
-                if key in result:
+            for key in ("estimated_flow", "net_flow", "netFlow", "flow"):
+                if key in result and result[key] is not None:
                     return float(result[key])
+                    
     except Exception as e:
         print(f"  [Eulerpool] {symbol} 失敗: {e}")
     return None
