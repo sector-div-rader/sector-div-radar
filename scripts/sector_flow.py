@@ -49,7 +49,7 @@ def fetch_eulerpool_flow(client, symbol):
 def fetch_proxy_flow(symbol, window=1):
     """
     Volume-price proxy: pct_change × avg dollar_volume。
-    這是學術界和業界常用的 ETF 資金流免費代理方法。
+    兼容 yfinance 0.2.48+ 返回 MultiIndex 的 DataFrame 格式。
     """
     try:
         df = yf.download(
@@ -57,22 +57,44 @@ def fetch_proxy_flow(symbol, window=1):
             period=f"{window + 10}d",
             progress=False,
             auto_adjust=True,
+            multi_level_index=False,  # 關鍵：強制單一價格列為一維索引
         )
         if df is None or len(df) < window + 1:
             return None
 
+        # 兼容保護：如果未來結構變化仍出現 MultiIndex，則強行展平
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         closes = df["Close"].iloc[-(window + 1):]
-        pct = float(closes.iloc[-1] / closes.iloc[0] - 1.0)
-        dvol = float(
-            (df["Close"].iloc[-window:] * df["Volume"].iloc[-window:]).mean()
-        )
-        if dvol == 0 or pct != pct:  # NaN 檢查
+        # 確保為單一 Series，避免後續 float() 遇到 DataFrame/Series
+        if isinstance(closes, pd.DataFrame):
+            closes = closes.iloc[:, 0]
+
+        # 使用 .item() 或顯式轉換為 float 提取純量
+        start_price = float(closes.iloc[0])
+        end_price = float(closes.iloc[-1])
+        
+        if start_price == 0 or pd.isna(start_price) or pd.isna(end_price):
             return None
+            
+        pct = (end_price / start_price) - 1.0
+
+        vols = df["Volume"].iloc[-window:]
+        if isinstance(vols, pd.DataFrame):
+            vols = vols.iloc[:, 0]
+            
+        # 計算平均交易額
+        dollar_vols = (df["Close"].iloc[-window:].values.flatten() * vols.values.flatten())
+        dvol = float(pd.Series(dollar_vols).mean())
+
+        if dvol == 0 or pd.isna(dvol):
+            return None
+            
         return pct * dvol
     except Exception as e:
         print(f"  [Proxy] {symbol} 失敗: {e}")
         return None
-
 
 def main():
     api_key = os.environ.get("EULERPOOL_KEY", "").strip()
