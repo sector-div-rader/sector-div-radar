@@ -1,55 +1,82 @@
-import requests
+import yfinance as yf
+import pandas as pd
 import json
 import datetime
 import os
 
 SECTOR_ETFS = {
-    "XLK": "105.XLK", "XLF": "105.XLF", "XLE": "105.XLE",
-    "XLV": "105.XLV", "XLY": "105.XLY", "XLP": "105.XLP",
-    "XLU": "105.XLU", "XLI": "105.XLI", "XLB": "105.XLB",
-    "XLRE": "105.XLRE", "XLC": "105.XLC",
+    "XLK": "科技", "XLF": "金融", "XLE": "能源", "XLV": "醫療保健",
+    "XLY": "非必需消費", "XLP": "必需消費", "XLU": "公用事業",
+    "XLI": "工業", "XLB": "原材料", "XLRE": "房地產", "XLC": "通訊服務",
 }
 
-def fetch_intraday_flow(secid):
-    url = "https://push2.eastmoney.com/api/qt/stock/fflow/kline/get"
-    params = {
-        "secid": secid,
-        "klt": "1",          # 1 分鐘
-        "lmt": "0",
-        "fields1": "f1,f2,f3,f7",
-        "fields2": "f51,f52,f53,f54,f55,f56",
-    }
-    headers = {"User-Agent": "Mozilla/5.0"}
+def fetch_intraday_flow(symbol):
+    """
+    用 yfinance 拉取當日 1 分鐘 K 線，計算最新一根 K 線嘅估算資金流。
+    """
     try:
-        r = requests.get(url, params=params, headers=headers, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        klines = data.get("data", {}).get("klines", [])
-        if not klines:
+        ticker = yf.Ticker(symbol)
+        # 拉取今日嘅 1 分鐘數據，prepost=False 代表只計常規交易時段
+        df = ticker.history(period="1d", interval="1m", prepost=False)
+        
+        if df is None or df.empty or len(df) < 2:
             return None
-        latest = klines[-1].split(",")
-        # 格式: timestamp, main, small, medium, large, super_large
+            
+        latest = df.iloc[-1]
+        prev = df.iloc[-2]
+        
+        # 計算呢一分鐘嘅價格變化
+        pct_change = (latest['Close'] - prev['Close']) / prev['Close']
+        
+        # 計算呢一分鐘嘅成交額 (價格 * 成交量)
+        dollar_volume = latest['Close'] * latest['Volume']
+        
+        # 盤中估算資金流
+        flow = pct_change * dollar_volume
+        
+        # 將時間轉做 HKT (UTC+8)
+        time_str = latest.name.tz_convert('Asia/Hong_Kong').strftime('%H:%M')
+        
         return {
-            "time": latest[0],
-            "main_net_inflow": float(latest[1]),
+            "time": time_str,
+            "main_net_inflow": float(flow)
         }
     except Exception as e:
-        print(f"[Intraday] {secid} 失敗: {e}")
+        print(f"  [Intraday] {symbol} 失敗: {e}")
         return None
 
 def main():
     rows = []
-    for symbol, secid in SECTOR_ETFS.items():
-        flow = fetch_intraday_flow(secid)
-        rows.append({"symbol": symbol, "name": symbol, **(flow or {})})
+    for symbol, name in SECTOR_ETFS.items():
+        print(f"處理 {symbol} ({name})...")
+        flow = fetch_intraday_flow(symbol)
+        
+        if flow:
+            rows.append({
+                "symbol": symbol,
+                "name": name,
+                "time": flow["time"],
+                "main_net_inflow": flow["main_net_inflow"]
+            })
+        else:
+            rows.append({
+                "symbol": symbol, 
+                "name": name, 
+                "main_net_inflow": None,
+                "time": "—"
+            })
+
     output = {
         "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
-        "note": "東方財富盤中分鐘級資金流（主力淨流入）",
+        "note": "盤中即時估算（yfinance 1分鐘線）",
         "sectors": rows,
     }
+
     os.makedirs("data/flow", exist_ok=True)
     with open("data/flow/intraday.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
+
+    print(f"完成，已寫入 data/flow/intraday.json（{len(rows)} 個板塊）")
 
 if __name__ == "__main__":
     main()
