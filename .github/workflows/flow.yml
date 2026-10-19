@@ -43,7 +43,7 @@ jobs:
   # ==========================================
   # 任務 2：盤中即時估算資金流（東方財富）
   # ==========================================
-  intraday:
+   intraday:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -55,7 +55,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install yfinance pandas
 
       - name: Run intraday flow scraper
         run: python scripts/intraday_flow.py
