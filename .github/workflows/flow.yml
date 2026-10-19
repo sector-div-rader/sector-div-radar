@@ -47,6 +47,7 @@ jobs:
   intraday:
     needs: flow
     runs-on: ubuntu-latest
+    timeout-minutes: 3  # 👈 加呢行
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
