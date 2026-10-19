@@ -1,72 +1,72 @@
 {
-  "updated_at": "2026-10-19T18:57:55.887012Z",
+  "updated_at": "2026-10-19T19:05:00.423812Z",
   "note": "盤中即時估算（yfinance 1分鐘線）",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "time": "02:57",
-      "main_net_inflow": 0.0
+      "time": "03:03",
+      "main_net_inflow": -4876003.244957399
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "time": "02:57",
-      "main_net_inflow": 0.0
+      "time": "03:03",
+      "main_net_inflow": -4126463.4552065195
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "time": "02:57",
-      "main_net_inflow": -0.0
+      "time": "03:03",
+      "main_net_inflow": -152091.67536476656
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "time": "02:57",
-      "main_net_inflow": 0.0
+      "time": "03:03",
+      "main_net_inflow": 2363044.5541646644
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "time": "02:57",
-      "main_net_inflow": 0.0
+      "time": "03:03",
+      "main_net_inflow": 13403973.769799868
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "time": "02:57",
-      "main_net_inflow": -0.0
+      "time": "03:03",
+      "main_net_inflow": 6286587.4357924815
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "time": "02:57",
-      "main_net_inflow": -0.0
+      "time": "03:03",
+      "main_net_inflow": -10572476.806543445
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "time": "02:57",
-      "main_net_inflow": 0.0
+      "time": "03:03",
+      "main_net_inflow": -9053162.426078966
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "time": "02:57",
-      "main_net_inflow": -0.0
+      "time": "03:03",
+      "main_net_inflow": -557555.4067052855
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "time": "02:57",
-      "main_net_inflow": -0.0
+      "time": "03:03",
+      "main_net_inflow": -3637547.36183636
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "time": "02:57",
-      "main_net_inflow": 0.0
+      "time": "03:03",
+      "main_net_inflow": 542272.5203600009
     }
   ]
 }
