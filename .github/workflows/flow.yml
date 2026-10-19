@@ -45,7 +45,7 @@ jobs:
   # 任務 2：盤中即時估算資金流（Yahoo Finance）
   # ==========================================
   intraday:
-    needs: flow                    # 👈 關鍵：等 flow 任務完全跑完，先至開始跑 intraday
+    needs: flow
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -57,9 +57,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance pandas
+        run: pip install longbridge
 
       - name: Run intraday flow scraper
+        env:
+          LONGBRIDGE_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
+          LONGBRIDGE_OAUTH_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
         run: python scripts/intraday_flow.py
 
       - name: Commit and push
