@@ -12,30 +12,39 @@ SECTOR_ETFS = {
 
 def fetch_intraday_flow(symbol):
     """
-    用 yfinance 拉取當日 1 分鐘 K 線，計算最新一根 K 線嘅估算資金流。
+    用 yfinance 拉取當日 1 分鐘 K 線，計算「今日至今」嘅累計估算資金流。
     """
     try:
         ticker = yf.Ticker(symbol)
-        # 拉取今日嘅 1 分鐘數據，prepost=False 代表只計常規交易時段
         df = ticker.history(period="1d", interval="1m", prepost=False)
         
         if df is None or df.empty or len(df) < 2:
             return None
             
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
+        # 過濾掉成交量為 0 嘅 Bar（避免除數為零或數值失真）
+        df = df[df['Volume'] > 0]
+        if len(df) < 2:
+            return None
+            
+        # 取今日開盤價同最新價
+        today_open = float(df.iloc[0]['Open'])
+        latest_close = float(df.iloc[-1]['Close'])
+        total_volume = float(df['Volume'].sum())
         
-        # 計算呢一分鐘嘅價格變化
-        pct_change = (latest['Close'] - prev['Close']) / prev['Close']
+        if today_open == 0:
+            return None
+            
+        # 計算今日至今嘅價格變化百分比
+        pct_change = (latest_close - today_open) / today_open
         
-        # 計算呢一分鐘嘅成交額 (價格 * 成交量)
-        dollar_volume = latest['Close'] * latest['Volume']
+        # 估算今日至今嘅總成交額 (最新價 * 總成交量)
+        dollar_volume = latest_close * total_volume
         
-        # 盤中估算資金流
+        # 計算今日至今嘅累計估算資金流
         flow = pct_change * dollar_volume
         
         # 將時間轉做 HKT (UTC+8)
-        time_str = latest.name.tz_convert('Asia/Hong_Kong').strftime('%H:%M')
+        time_str = df.index[-1].tz_convert('Asia/Hong_Kong').strftime('%H:%M')
         
         return {
             "time": time_str,
