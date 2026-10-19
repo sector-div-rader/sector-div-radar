@@ -1,0 +1,106 @@
+{
+  "as_of": "2026-10-19",
+  "updated_at": "2026-10-19T18:00:01.258954Z",
+  "source_note": "Eulerpool creation/redemption flows; volume-price proxy fallback",
+  "sectors": [
+    {
+      "symbol": "XLK",
+      "name": "科技",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLF",
+      "name": "金融",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLE",
+      "name": "能源",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLV",
+      "name": "醫療保健",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLY",
+      "name": "非必需消費",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLP",
+      "name": "必需消費",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLU",
+      "name": "公用事業",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLI",
+      "name": "工業",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLB",
+      "name": "原材料",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLRE",
+      "name": "房地產",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    },
+    {
+      "symbol": "XLC",
+      "name": "通訊服務",
+      "net_flow_1d": null,
+      "net_flow_5d": null,
+      "net_flow_20d": null,
+      "source": "proxy",
+      "rs_vs_spy": null
+    }
+  ]
+}
