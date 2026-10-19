@@ -1,0 +1,37 @@
+name: Sector Flow Pipeline
+
+on:
+  schedule:
+    - cron: '17 0 * * 2-6'   # UTC 00:17，週二至週六
+  workflow_dispatch:          # 允許手動觸發
+
+permissions:
+  contents: write             # 必須，否則 git push 會失敗
+
+jobs:
+  flow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install eulerpool yfinance pandas
+
+      - name: Run sector flow scraper
+        env:
+          EULERPOOL_KEY: ${{ secrets.EULERPOOL_KEY }}
+        run: python scripts/sector_flow.py
+
+      - name: Commit and push
+        run: |
+          git config user.name 'flow-bot'
+          git config user.email 'bot@users.noreply.github.com'
+          git add data/flow/
+          git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
+          git push
