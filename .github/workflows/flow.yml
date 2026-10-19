@@ -64,6 +64,10 @@ jobs:
         run: |
           git config user.name 'flow-bot'
           git config user.email 'bot@users.noreply.github.com'
-          git add data/flow/intraday.json
-          git diff --staged --quiet || git commit -m "Update intraday flow $(date -u +%Y-%m-%dT%H:%M)"
+          git add data/flow/
+          git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
+          
+          # 👇 關鍵：先拉取遠端最新改動並 rebase，避免 push 被拒絕
+          git pull --rebase origin main
+          
           git push
