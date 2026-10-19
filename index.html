@@ -1794,6 +1794,103 @@ async function loadSectorFlow() {
 }
 
 loadSectorFlow();
+ // ===== 盤中即時資金流 =====
+let intradayChartInstance = null;
+
+async function loadIntradayFlow() {
+  const updated = document.getElementById('intraday-updated');
+  let data;
+
+  try {
+    const res = await fetch('data/flow/intraday.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (e) {
+    console.warn('[Intraday Flow] fetch failed:', e.message);
+    if (updated) {
+      updated.textContent = `⚠️ 盤中數據未生成（或非交易時段）`;
+      updated.style.color = 'var(--muted)';
+    }
+    return;
+  }
+
+  if (updated) {
+    updated.textContent = `更新時間 ${new Date(data.updated_at).toLocaleString('zh-HK')}`;
+    updated.style.color = 'var(--muted)';
+  }
+
+  const sorted = [...data.sectors].sort(
+    (a, b) => (b.main_net_inflow ?? -Infinity) - (a.main_net_inflow ?? -Infinity)
+  );
+
+  // 1. 渲染表格
+  const tbody = document.getElementById('intraday-tbody');
+  if (tbody) {
+    tbody.innerHTML = sorted.map((s, i) => {
+      return `<tr>
+        <td style="text-align:center;">${i + 1}</td>
+        <td><strong>${s.symbol}</strong></td>
+        <td>${s.name || s.symbol}</td>
+        <td>${s.time || '—'}</td>
+        <td style="text-align:right;">${flowCellHTML(s.main_net_inflow)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // 2. 渲染圖表
+  const canvas = document.getElementById('intradayChart');
+  if (!canvas) return;
+
+  const labels = sorted.map(s => `${s.symbol} ${s.name || ''}`.trim());
+  const values = sorted.map(s => s.main_net_inflow ?? 0);
+
+  const bot = getComputedStyle(document.documentElement).getPropertyValue('--bot-color').trim() || '#3fb950';
+  const top = getComputedStyle(document.documentElement).getPropertyValue('--top-color').trim() || '#f85149';
+
+  if (intradayChartInstance) { intradayChartInstance.destroy(); }
+
+  intradayChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '盤中主力淨流入 (USD)',
+        data: values,
+        backgroundColor: values.map(v => v >= 0 ? bot : top),
+        borderColor: values.map(v => v >= 0 ? '#3fb950' : '#f85149'),
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { 
+            label: ctx => fmtFlow(ctx.parsed.x) 
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: flowTextColor(), callback: v => fmtFlow(v) },
+          grid: { color: flowGridColor() },
+        },
+        y: {
+          ticks: { color: flowTextColor(), font: { size: 12 } },
+          grid: { color: flowGridColor() },
+        },
+      },
+    },
+  });
+  
+  intradayChartInstance.$intradayData = data;
+}
+
+// 初始載入
+loadIntradayFlow();
 </script>
 
 </body>
