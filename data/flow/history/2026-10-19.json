@@ -1,106 +1,106 @@
 {
   "as_of": "2026-10-19",
-  "updated_at": "2026-10-19T18:03:54.921094Z",
+  "updated_at": "2026-10-19T18:09:09.009589Z",
   "source_note": "Eulerpool creation/redemption flows; volume-price proxy fallback",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": 15898078.035766881,
+      "net_flow_5d": -105329948.62366928,
+      "net_flow_20d": -70335064.91082115,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -70040583.42305721
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -6122528.860329413,
+      "net_flow_5d": 3875698.645095295,
+      "net_flow_20d": -28280555.124608647,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -92061190.31915352
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -6039542.299702032,
+      "net_flow_5d": 55736635.61979568,
+      "net_flow_20d": 179033590.1844322,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -91978203.75852613
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -2554014.56517471,
+      "net_flow_5d": 38187307.67348368,
+      "net_flow_20d": 59955966.79223974,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -88492676.02399881
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": 7589023.584655682,
+      "net_flow_5d": 17009991.76313253,
+      "net_flow_20d": 14722925.878298657,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -78349637.87416841
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -1208760.600516402,
+      "net_flow_5d": 51524620.57711636,
+      "net_flow_20d": 69479194.88836019,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -87147422.0593405
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -9494863.556424072,
+      "net_flow_5d": -4631918.569296951,
+      "net_flow_20d": 28408314.51756232,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -95433525.01524816
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -2753636.8498916957,
+      "net_flow_5d": -16159576.631703118,
+      "net_flow_20d": -20990108.862764493,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -88692298.30871579
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": 499613.66798353684,
+      "net_flow_5d": 15979873.978303786,
+      "net_flow_20d": 14878931.652373713,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -85439047.79084057
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -2114192.6097613974,
+      "net_flow_5d": -1886404.7752576184,
+      "net_flow_20d": -6677452.443361397,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -88052854.0685855
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "net_flow_1d": null,
-      "net_flow_5d": null,
-      "net_flow_20d": null,
+      "net_flow_1d": -547086.2154449358,
+      "net_flow_5d": -7949899.718661299,
+      "net_flow_20d": -28817951.57419421,
       "source": "proxy",
-      "rs_vs_spy": null
+      "rs_vs_spy": -86485747.67426904
     }
   ]
 }
