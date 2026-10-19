@@ -170,6 +170,20 @@
     table.table { font-size: 12px; }
     table.table th, table.table td { padding: 6px 8px; }
   }
+
+  /* ===== 板塊資金流 ===== */
+  .flow-chart-container { position: relative; height: 340px; margin: 15px 0 20px; }
+  .flow-in  { color: var(--bot-color); font-weight: 600; }
+  .flow-out { color: var(--top-color); font-weight: 600; }
+  .flow-flat { color: var(--muted); }
+  .flow-source-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 8px;
+    font-size: 11px; font-weight: bold;
+  }
+  .flow-source-euler { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+  .flow-source-proxy { background: rgba(139, 148, 158, 0.15); color: var(--muted); }
+  .flow-updated { color: var(--muted); font-size: 12px; }
+  .flow-note { font-size: 13px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -1301,6 +1315,40 @@
   </table>
 </div>
 
+<!-- ===== 板塊資金流 ===== -->
+<h2>💰 美股板塊資金流</h2>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">
+    <span class="flow-note">📌 數據源：SPDR ETF 創建/贖回資金流（Eulerpool）；成交量-價格代理作後備</span>
+    <span id="flow-updated" class="flow-updated">載入中…</span>
+  </div>
+
+  <div class="flow-chart-container">
+    <canvas id="flowChart"></canvas>
+  </div>
+
+  <div class="scroll" style="max-height:600px;">
+    <table class="table" id="flow-table">
+      <thead>
+        <tr>
+          <th style="text-align:center;">排名</th>
+          <th>ETF</th>
+          <th>板塊</th>
+          <th style="text-align:right;">當日淨流</th>
+          <th style="text-align:right;">5日累計</th>
+          <th style="text-align:right;">20日累計</th>
+          <th style="text-align:right;">相對SPY</th>
+          <th style="text-align:center;">數據源</th>
+        </tr>
+      </thead>
+      <tbody id="flow-tbody">
+        <tr><td colspan="8" style="text-align:center; color:var(--muted); padding:20px;">載入中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <div class="footer">
   ⚡ Radar V20.2 | Powered by GitHub Actions + GitHub Pages
 </div>
@@ -1323,6 +1371,11 @@ function toggleTheme() {
   html.setAttribute('data-theme', next);
   document.getElementById('theme-btn').textContent = next === 'dark' ? '🌙' : '☀️';
   localStorage.setItem('theme', next);
+  // 主題切換時重繪資金流圖表
+  if (typeof flowChartInstance !== 'undefined' && flowChartInstance) {
+    const data = flowChartInstance.$flowData;
+    if (data) renderFlowChart(data);
+  }
 }
 (function() {
   const saved = localStorage.getItem('theme');
@@ -1552,6 +1605,158 @@ if (nqBar) {
   marker.style.left = Math.max(0, Math.min(100, pct)) + '%';
   nqBar.appendChild(marker);
 }
+
+// ===== 板塊資金流 =====
+const FLOW_DEMO_DATA = {
+  as_of: '示例',
+  updated_at: '等待 pipeline 生成',
+  is_demo: true,
+  sectors: [
+    { symbol: 'XLK',  name: '科技',       net_flow_1d:  823450000, net_flow_5d: 1240000000, net_flow_20d: 2150000000, rs_vs_spy:  512000000, source: 'eulerpool' },
+    { symbol: 'XLF',  name: '金融',       net_flow_1d:  412780000, net_flow_5d:  620000000, net_flow_20d:  890000000, rs_vs_spy:  101000000, source: 'eulerpool' },
+    { symbol: 'XLE',  name: '能源',       net_flow_1d: -218340000, net_flow_5d: -340000000, net_flow_20d: -510000000, rs_vs_spy: -529000000, source: 'proxy' },
+    { symbol: 'XLV',  name: '醫療保健',   net_flow_1d:  156230000, net_flow_5d:  210000000, net_flow_20d:  340000000, rs_vs_spy: -155000000, source: 'eulerpool' },
+    { symbol: 'XLY',  name: '非必需消費', net_flow_1d:  -92450000, net_flow_5d: -150000000, net_flow_20d:   80000000, rs_vs_spy: -404000000, source: 'proxy' },
+    { symbol: 'XLP',  name: '必需消費',   net_flow_1d:   68120000, net_flow_5d:   95000000, net_flow_20d:  130000000, rs_vs_spy: -243000000, source: 'eulerpool' },
+    { symbol: 'XLU',  name: '公用事業',   net_flow_1d:   45670000, net_flow_5d:   62000000, net_flow_20d:   98000000, rs_vs_spy: -266000000, source: 'eulerpool' },
+    { symbol: 'XLI',  name: '工業',       net_flow_1d: -156780000, net_flow_5d: -210000000, net_flow_20d: -180000000, rs_vs_spy: -468000000, source: 'proxy' },
+    { symbol: 'XLB',  name: '原材料',     net_flow_1d:  -78920000, net_flow_5d: -105000000, net_flow_20d:  -60000000, rs_vs_spy: -390000000, source: 'proxy' },
+    { symbol: 'XLRE', name: '房地產',     net_flow_1d:   34560000, net_flow_5d:   48000000, net_flow_20d:   72000000, rs_vs_spy: -277000000, source: 'eulerpool' },
+    { symbol: 'XLC',  name: '通訊服務',   net_flow_1d:  289340000, net_flow_5d:  380000000, net_flow_20d:  520000000, rs_vs_spy:  -22000000, source: 'eulerpool' },
+  ],
+};
+
+let flowChartInstance = null;
+
+function flowTextColor() {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? '#c9d1d9' : '#1f2328';
+}
+function flowGridColor() {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? '#30363d' : '#d0d7de';
+}
+
+function fmtFlow(v) {
+  if (v == null || v === undefined || isNaN(v)) return '—';
+  const abs = Math.abs(v), sign = v >= 0 ? '+' : '-';
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+function flowCellHTML(v) {
+  if (v == null || isNaN(v)) return '<span class="flow-flat">—</span>';
+  const cls = v > 0 ? 'flow-in' : v < 0 ? 'flow-out' : 'flow-flat';
+  return `<span class="${cls}">${fmtFlow(v)}</span>`;
+}
+
+function renderFlowTable(data) {
+  const tbody = document.getElementById('flow-tbody');
+  if (!tbody) return;
+
+  const sorted = [...data.sectors].sort(
+    (a, b) => (b.net_flow_1d ?? -Infinity) - (a.net_flow_1d ?? -Infinity)
+  );
+
+  tbody.innerHTML = sorted.map((s, i) => {
+    const badge = s.source === 'eulerpool'
+      ? '<span class="flow-source-badge flow-source-euler">🅴 機構</span>'
+      : '<span class="flow-source-badge flow-source-proxy">🅿 代理</span>';
+    return `<tr>
+      <td style="text-align:center;">${i + 1}</td>
+      <td><strong>${s.symbol}</strong></td>
+      <td>${s.name}</td>
+      <td style="text-align:right;">${flowCellHTML(s.net_flow_1d)}</td>
+      <td style="text-align:right;">${flowCellHTML(s.net_flow_5d)}</td>
+      <td style="text-align:right;">${flowCellHTML(s.net_flow_20d)}</td>
+      <td style="text-align:right;">${flowCellHTML(s.rs_vs_spy)}</td>
+      <td style="text-align:center;">${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderFlowChart(data) {
+  const canvas = document.getElementById('flowChart');
+  if (!canvas) return;
+
+  const sorted = [...data.sectors].sort(
+    (a, b) => (b.net_flow_1d ?? 0) - (a.net_flow_1d ?? 0)
+  );
+  const labels = sorted.map(s => `${s.symbol} ${s.name}`);
+  const values = sorted.map(s => s.net_flow_1d ?? 0);
+
+  const bot = getComputedStyle(document.documentElement).getPropertyValue('--bot-color').trim() || '#3fb950';
+  const top = getComputedStyle(document.documentElement).getPropertyValue('--top-color').trim() || '#f85149';
+
+  const backgrounds = values.map(v => v >= 0 ? bot : top);
+  const borders = values.map(v => v >= 0 ? '#3fb950' : '#f85149');
+
+  if (flowChartInstance) { flowChartInstance.destroy(); }
+
+  flowChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '當日淨流',
+        data: values,
+        backgroundColor: backgrounds,
+        borderColor: borders,
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => fmtFlow(ctx.parsed.x) },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: flowTextColor(), callback: v => fmtFlow(v) },
+          grid: { color: flowGridColor() },
+        },
+        y: {
+          ticks: { color: flowTextColor(), font: { size: 12 } },
+          grid: { color: flowGridColor() },
+        },
+      },
+    },
+  });
+  // 存住最新數據，方便 theme 切換時重繪
+  flowChartInstance.$flowData = data;
+}
+
+async function loadSectorFlow() {
+  const updated = document.getElementById('flow-updated');
+  let data, isDemo = false;
+
+  try {
+    const res = await fetch('data/flow/latest.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (e) {
+    console.warn('[Sector Flow] fetch failed, using demo data:', e.message);
+    data = FLOW_DEMO_DATA;
+    isDemo = true;
+  }
+
+  if (updated) {
+    updated.textContent = isDemo
+      ? `📌 示例數據 · 等待 pipeline 首次生成 data/flow/latest.json`
+      : `數據日 ${data.as_of} · 更新 ${data.updated_at}`;
+    if (isDemo) updated.style.color = 'var(--top-color)';
+  }
+
+  renderFlowTable(data);
+  renderFlowChart(data);
+}
+
+loadSectorFlow();
 </script>
 
 </body>
