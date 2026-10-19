@@ -1,72 +1,72 @@
 {
-  "updated_at": "2026-10-19T18:56:22.120852Z",
+  "updated_at": "2026-10-19T18:57:55.887012Z",
   "note": "盤中即時估算（yfinance 1分鐘線）",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "time": "02:56",
-      "main_net_inflow": -0.0
+      "time": "02:57",
+      "main_net_inflow": 0.0
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "time": "02:56",
+      "time": "02:57",
       "main_net_inflow": 0.0
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "time": "02:56",
+      "time": "02:57",
       "main_net_inflow": -0.0
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "time": "02:56",
+      "time": "02:57",
       "main_net_inflow": 0.0
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "time": "02:56",
+      "time": "02:57",
       "main_net_inflow": 0.0
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "time": "02:56",
-      "main_net_inflow": 0.0
+      "time": "02:57",
+      "main_net_inflow": -0.0
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "time": "02:56",
-      "main_net_inflow": 0.0
+      "time": "02:57",
+      "main_net_inflow": -0.0
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "time": "02:56",
+      "time": "02:57",
       "main_net_inflow": 0.0
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "time": "02:56",
-      "main_net_inflow": 0.0
+      "time": "02:57",
+      "main_net_inflow": -0.0
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "time": "02:56",
+      "time": "02:57",
       "main_net_inflow": -0.0
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "time": "02:56",
-      "main_net_inflow": -0.0
+      "time": "02:57",
+      "main_net_inflow": 0.0
     }
   ]
 }
