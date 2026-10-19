@@ -1,4 +1,3 @@
-# scripts/sector_flow.py
 import os
 import json
 import datetime
@@ -6,6 +5,7 @@ import traceback
 
 import eulerpool
 import yfinance as yf
+import pandas as pd  # 解決 name 'pd' is not defined 嘅關鍵
 
 # ── 11 隻 SPDR 板塊 ETF ──
 SECTOR_ETFS = {
@@ -23,15 +23,13 @@ SECTOR_ETFS = {
 }
 BENCH = "SPY"
 
-
 def fetch_eulerpool_flow(client, symbol):
-    """
-    嘗試從 Eulerpool 拉真實 ETF 資金流。
-    成功返回 float，失敗返回 None。
-    """
+    """嘗試從 Eulerpool 拉真實 ETF 資金流。"""
     try:
         result = client.etf.flows(symbol)
-        # SDK 返回結構可能係 list 或 dict，逐一兼容
+        # 加句 print 睇下 Eulerpool 到底回傳咩
+        print(f"  [Eulerpool Debug] {symbol} 返回: {result}")
+        
         if isinstance(result, list) and len(result) > 0:
             latest = result[-1]
             for key in ("net_flow", "netFlow", "flow"):
@@ -45,33 +43,19 @@ def fetch_eulerpool_flow(client, symbol):
         print(f"  [Eulerpool] {symbol} 失敗: {e}")
     return None
 
-
 def fetch_proxy_flow(symbol, window=1):
     """
     Volume-price proxy: pct_change × avg dollar_volume。
-    兼容 yfinance 0.2.48+ 返回 MultiIndex 的 DataFrame 格式。
+    改用 yf.Ticker().history() 避免 yfinance 多層索引 (MultiIndex) 問題。
     """
     try:
-        df = yf.download(
-            symbol,
-            period=f"{window + 10}d",
-            progress=False,
-            auto_adjust=True,
-            multi_level_index=False,  # 關鍵：強制單一價格列為一維索引
-        )
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period=f"{window + 10}d", auto_adjust=True)
+        
         if df is None or len(df) < window + 1:
             return None
 
-        # 兼容保護：如果未來結構變化仍出現 MultiIndex，則強行展平
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
         closes = df["Close"].iloc[-(window + 1):]
-        # 確保為單一 Series，避免後續 float() 遇到 DataFrame/Series
-        if isinstance(closes, pd.DataFrame):
-            closes = closes.iloc[:, 0]
-
-        # 使用 .item() 或顯式轉換為 float 提取純量
         start_price = float(closes.iloc[0])
         end_price = float(closes.iloc[-1])
         
@@ -81,12 +65,8 @@ def fetch_proxy_flow(symbol, window=1):
         pct = (end_price / start_price) - 1.0
 
         vols = df["Volume"].iloc[-window:]
-        if isinstance(vols, pd.DataFrame):
-            vols = vols.iloc[:, 0]
-            
-        # 計算平均交易額
-        dollar_vols = (df["Close"].iloc[-window:].values.flatten() * vols.values.flatten())
-        dvol = float(pd.Series(dollar_vols).mean())
+        dollar_vols = df["Close"].iloc[-window:] * vols
+        dvol = float(dollar_vols.mean())
 
         if dvol == 0 or pd.isna(dvol):
             return None
@@ -129,7 +109,7 @@ def main():
             }
         )
 
-    # 相對 SPY 資金流（對沖全市場同升同跌）
+    # 相對 SPY 資金流
     spy_proxy_1d = fetch_proxy_flow(BENCH, 1)
     for r in rows:
         if r["net_flow_1d"] is not None and spy_proxy_1d is not None:
@@ -147,14 +127,11 @@ def main():
     os.makedirs("data/flow/history", exist_ok=True)
     with open("data/flow/latest.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-    with open(
-        f"data/flow/history/{output['as_of']}.json", "w", encoding="utf-8"
-    ) as f:
+    with open(f"data/flow/history/{output['as_of']}.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     client.close()
     print(f"完成，已寫入 data/flow/latest.json（{len(rows)} 個板塊）")
-
 
 if __name__ == "__main__":
     try:
