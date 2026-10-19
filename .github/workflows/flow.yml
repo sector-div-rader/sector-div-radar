@@ -38,12 +38,14 @@ jobs:
           git config user.email 'bot@users.noreply.github.com'
           git add data/flow/
           git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
           git push
 
   # ==========================================
   # 任務 2：盤中即時估算資金流（Yahoo Finance）
   # ==========================================
   intraday:
+    needs: flow                    # 👈 關鍵：等 flow 任務完全跑完，先至開始跑 intraday
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -64,10 +66,7 @@ jobs:
         run: |
           git config user.name 'flow-bot'
           git config user.email 'bot@users.noreply.github.com'
-          git add data/flow/
-          git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
-          
-          # 👇 關鍵：先拉取遠端最新改動並 rebase，避免 push 被拒絕
+          git add data/flow/intraday.json
+          git diff --staged --quiet || git commit -m "Update intraday flow $(date -u +%Y-%m-%dT%H:%M)"
           git pull --rebase origin main
-          
           git push
