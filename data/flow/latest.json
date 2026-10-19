@@ -1,14 +1,14 @@
 {
   "as_of": "2026-10-19",
-  "updated_at": "2026-10-19T20:18:37.986750Z",
+  "updated_at": "2026-10-19T20:51:09.756556Z",
   "source_note": "Eulerpool creation/redemption flows; volume-price proxy fallback",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
       "net_flow_1d": -704898583.0,
-      "net_flow_5d": -114098023.28075513,
-      "net_flow_20d": -73628572.28156818,
+      "net_flow_5d": -113341840.6142268,
+      "net_flow_20d": -73054738.68087582,
       "source": "eulerpool",
       "rs_vs_spy": -824169574.1851315
     },
