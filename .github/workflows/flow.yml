@@ -2,14 +2,17 @@ name: Sector Flow Pipeline
 
 on:
   schedule:
-    - cron: '17 0 * * 2-6'   # UTC 00:17，週二至週六
+    - cron: '17 0 * * 2-6'         # 原有：Eulerpool 日線（UTC 00:17）
     - cron: '*/15 13-20 * * 1-5'   # 新增：東財盤中（UTC 13:00-20:00，每 15 分鐘）
-  workflow_dispatch:          # 允許手動觸發
+  workflow_dispatch:               # 允許手動觸發
 
 permissions:
-  contents: write             # 必須，否則 git push 會失敗
+  contents: write                  # 必須，否則 git push 會失敗
 
 jobs:
+  # ==========================================
+  # 任務 1：收盤後真實機構資金流（Eulerpool）
+  # ==========================================
   flow:
     runs-on: ubuntu-latest
     steps:
@@ -35,4 +38,32 @@ jobs:
           git config user.email 'bot@users.noreply.github.com'
           git add data/flow/
           git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
+          git push
+
+  # ==========================================
+  # 任務 2：盤中即時估算資金流（東方財富）
+  # ==========================================
+  intraday:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run intraday flow scraper
+        run: python scripts/intraday_flow.py
+
+      - name: Commit and push
+        run: |
+          git config user.name 'flow-bot'
+          git config user.email 'bot@users.noreply.github.com'
+          git add data/flow/intraday.json
+          git diff --staged --quiet || git commit -m "Update intraday flow $(date -u +%Y-%m-%dT%H:%M)"
           git push
