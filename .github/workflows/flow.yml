@@ -1,53 +1,7 @@
-name: Sector Flow Pipeline
-
-on:
-  schedule:
-    - cron: '17 0 * * 2-6'         # 每日日線（UTC 00:17）
-    - cron: '*/5 13-20 * * 1-5'    # 盤中即時（UTC 13:00-20:00，每 5 分鐘）
-  workflow_dispatch:               # 允許手動觸發
-
-permissions:
-  contents: write                  # 必須，否則 git push 會失敗
-
-jobs:
-  # ==========================================
-  # 任務 1：收盤後真實機構資金流（Eulerpool）
-  # ==========================================
-  flow:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install eulerpool yfinance pandas
-
-      - name: Run sector flow scraper
-        env:
-          EULERPOOL_KEY: ${{ secrets.EULERPOOL_KEY }}
-        run: python scripts/sector_flow.py
-
-      - name: Commit and push
-        run: |
-          git config user.name 'flow-bot'
-          git config user.email 'bot@users.noreply.github.com'
-          git add data/flow/
-          git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push
-
-  # ==========================================
-  # 任務 2：盤中即時估算資金流（Yahoo Finance）
-  # ==========================================
   intraday:
     needs: flow
     runs-on: ubuntu-latest
-    timeout-minutes: 3  # 👈 加呢行
+    timeout-minutes: 3  # 👈 保險：3 分鐘一定強制斷開，唔會再卡
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -58,11 +12,10 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install longbridge
+        run: pip install requests  # 👈 只用 requests，唔使裝 SDK
 
       - name: Run intraday flow scraper
         env:
-          LONGBRIDGE_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
           LONGBRIDGE_OAUTH_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
         run: python scripts/intraday_flow.py
 
