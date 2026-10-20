@@ -47,7 +47,7 @@ jobs:
   intraday:
     needs: flow
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -58,11 +58,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install yfinance pandas
 
       - name: Run intraday flow scraper
-        env:
-          ITICK_TOKEN: ${{ secrets.ITICK_TOKEN }}
         run: python scripts/intraday_flow.py
 
       - name: Commit and push
