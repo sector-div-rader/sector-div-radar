@@ -1,9 +1,8 @@
-import os
+import yfinance as yf
+import pandas as pd
 import json
-import requests
 import datetime
-import time  # 確保有 import time
-from zoneinfo import ZoneInfo
+import os
 
 SECTOR_ETFS = {
     "XLK": "科技", "XLF": "金融", "XLE": "能源", "XLV": "醫療保健",
@@ -11,110 +10,82 @@ SECTOR_ETFS = {
     "XLI": "工業", "XLB": "原材料", "XLRE": "房地產", "XLC": "通訊服務",
 }
 
-ITICK_TOKEN = os.environ.get("ITICK_TOKEN")
-if not ITICK_TOKEN:
-    raise RuntimeError("缺少 ITICK_TOKEN 環境變數")
-
 def fetch_intraday_flow(symbol):
-    url = "https://api.itick.io/stock/kline"
-    headers = {"accept": "application/json", "token": ITICK_TOKEN}
-    params = {
-        "region": "US",
-        "code": symbol,
-        "kType": 1,       # 1 分鐘 K 線
-        "limit": 100,     # 👈 由 1000 降到 100，降低 API 負載
-    }
-
+    """
+    對比昨日收盤價，計算今日至今嘅累計估算資金流。
+    """
     try:
-        res = requests.get(url, headers=headers, params=params, timeout=10)
+        ticker = yf.Ticker(symbol)
+        # 拉取最近 5 日嘅 1 分鐘數據，確保一定有昨日嘅數據
+        df = ticker.history(period="5d", interval="1m", prepost=False)
         
-        # 👈 如果遇到 429，直接印出錯誤並返回 None
-        if res.status_code == 429:
-            return "429"
+        if df is None or df.empty or len(df) < 2:
+            return None
             
-        res.raise_for_status()
-        payload = res.json()
-
-        if payload.get("code") != 0:
-            print(f"API 錯誤: {payload.get('msg')}")
+        df = df[df['Volume'] > 0]
+        if len(df) < 2:
             return None
-
-        klines = payload.get("data", [])
-        if not klines or len(klines) < 2:
+            
+        # 獲取今日嘅數據
+        today_str = df.index[-1].strftime('%Y-%m-%d')
+        today_df = df[df.index.strftime('%Y-%m-%d') == today_str]
+        
+        if today_df.empty:
             return None
-
-        ny_tz = ZoneInfo("America/New_York")
-        today_ny = datetime.datetime.now(ny_tz).date()
-
-        today_klines = []
-        prev_day_close = None
-
-        for k in klines:
-            dt_utc = datetime.datetime.fromtimestamp(k["t"] / 1000, tz=datetime.timezone.utc)
-            dt_ny = dt_utc.astimezone(ny_tz)
-
-            if dt_ny.date() == today_ny:
-                today_klines.append(k)
-            elif dt_ny.date() < today_ny:
-                prev_day_close = float(k["c"])
-
-        if not today_klines or prev_day_close is None or prev_day_close == 0:
+            
+        # 獲取昨日嘅收盤價
+        prev_df = df[df.index.strftime('%Y-%m-%d') < today_str]
+        if prev_df.empty:
             return None
-
-        latest_close = float(today_klines[-1]["c"])
-        total_volume = sum(float(k["v"]) for k in today_klines)
-
-        pct_change = (latest_close - prev_day_close) / prev_day_close
+            
+        prev_close = float(prev_df.iloc[-1]['Close'])
+        latest_close = float(today_df.iloc[-1]['Close'])
+        total_volume = float(today_df['Volume'].sum())
+        
+        if prev_close == 0:
+            return None
+            
+        # 對比昨日收盤價嘅變化
+        pct_change = (latest_close - prev_close) / prev_close
         dollar_volume = latest_close * total_volume
-        net_flow_usd = pct_change * dollar_volume
-
-        latest_time_utc = datetime.datetime.fromtimestamp(
-            today_klines[-1]["t"] / 1000, tz=datetime.timezone.utc
-        )
-        time_str = latest_time_utc.astimezone(ZoneInfo("Asia/Hong_Kong")).strftime("%H:%M")
-
+        flow = pct_change * dollar_volume
+        
+        time_str = today_df.index[-1].tz_convert('Asia/Hong_Kong').strftime('%H:%M')
+        
         return {
             "time": time_str,
-            "main_net_inflow": float(net_flow_usd),
+            "main_net_inflow": float(flow)
         }
-
     except Exception as e:
-        print(f"[iTick] {symbol} 異常: {e}")
+        print(f"  [Intraday] {symbol} 失敗: {e}")
         return None
 
 def main():
     rows = []
-    # 因為免費版限每分鐘 5 次，我哋將請求分批處理
-    for i, (symbol, name) in enumerate(SECTOR_ETFS.items()):
+    for symbol, name in SECTOR_ETFS.items():
         print(f"處理 {symbol} ({name})...", end=" ", flush=True)
         flow = fetch_intraday_flow(symbol)
-
-        # 👈 如果遇到 429，強制休息 15 秒再試下一隻（避開每分鐘限制）
-        if flow == "429":
-            print("觸發限流 (429)，等待 15 秒...")
-            time.sleep(15)
-            # 重新試一次
-            flow = fetch_intraday_flow(symbol)
-
-        if flow and flow != "429":
+        
+        if flow:
             print(f"成功 (淨流: ${flow['main_net_inflow']:,.0f})")
             rows.append({
-                "symbol": symbol, "name": name,
-                "time": flow["time"], "main_net_inflow": flow["main_net_inflow"],
+                "symbol": symbol,
+                "name": name,
+                "time": flow["time"],
+                "main_net_inflow": flow["main_net_inflow"]
             })
         else:
             print("失敗或無數據")
             rows.append({
-                "symbol": symbol, "name": name,
-                "main_net_inflow": None, "time": "—",
+                "symbol": symbol, 
+                "name": name, 
+                "main_net_inflow": None,
+                "time": "—"
             })
-
-        # 👈 每隻之間休息 2 秒，總共 11 隻約需 22 秒，完美避開 5次/分鐘 限制
-        time.sleep(2)
 
     output = {
         "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "note": "盤中即時估算（iTick 1分鐘K線，對比昨收）",
+        "note": "盤中即時估算（yfinance 1分鐘線，對比昨收）",
         "sectors": rows,
     }
 
