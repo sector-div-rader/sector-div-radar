@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import datetime
+import time  # 確保有 import time
 from zoneinfo import ZoneInfo
 
 SECTOR_ETFS = {
@@ -15,21 +16,22 @@ if not ITICK_TOKEN:
     raise RuntimeError("缺少 ITICK_TOKEN 環境變數")
 
 def fetch_intraday_flow(symbol):
-    """
-    使用 iTick 1 分鐘 K 線 API，對比昨日收盤價計算今日至今嘅估算累計資金流。
-    """
     url = "https://api.itick.io/stock/kline"
     headers = {"accept": "application/json", "token": ITICK_TOKEN}
     params = {
         "region": "US",
         "code": symbol,
         "kType": 1,       # 1 分鐘 K 線
-        "limit": 1000,    # 獲取足夠多嘅 K 線（約覆蓋 2-3 個交易日）
+        "limit": 100,     # 👈 由 1000 降到 100，降低 API 負載
     }
 
     try:
-        # 強制 10 秒超時，防止卡死
         res = requests.get(url, headers=headers, params=params, timeout=10)
+        
+        # 👈 如果遇到 429，直接印出錯誤並返回 None
+        if res.status_code == 429:
+            return "429"
+            
         res.raise_for_status()
         payload = res.json()
 
@@ -41,8 +43,6 @@ def fetch_intraday_flow(symbol):
         if not klines or len(klines) < 2:
             return None
 
-        # iTick K 線按時間順序返回，最後一條係最新
-        # 將時間戳轉換為美東時間日期，用於區分「今日」和「昨日」
         ny_tz = ZoneInfo("America/New_York")
         today_ny = datetime.datetime.now(ny_tz).date()
 
@@ -50,31 +50,24 @@ def fetch_intraday_flow(symbol):
         prev_day_close = None
 
         for k in klines:
-            # k["t"] 是 UTC 毫秒時間戳
             dt_utc = datetime.datetime.fromtimestamp(k["t"] / 1000, tz=datetime.timezone.utc)
             dt_ny = dt_utc.astimezone(ny_tz)
 
             if dt_ny.date() == today_ny:
                 today_klines.append(k)
             elif dt_ny.date() < today_ny:
-                # 記錄最近一個「昨日」的收盤價
                 prev_day_close = float(k["c"])
 
         if not today_klines or prev_day_close is None or prev_day_close == 0:
             return None
 
-        # 今日最新收盤價（最後一條 K 線）
         latest_close = float(today_klines[-1]["c"])
-        # 今日總成交量（所有今日 K 線成交量之和）
         total_volume = sum(float(k["v"]) for k in today_klines)
 
-        # 對比昨日收盤價的變化
         pct_change = (latest_close - prev_day_close) / prev_day_close
-        # 估算累計資金流 = 價格變化百分比 × 今日總成交額
         dollar_volume = latest_close * total_volume
         net_flow_usd = pct_change * dollar_volume
 
-        # 最後一條 K 線的時間（轉為 HKT 顯示）
         latest_time_utc = datetime.datetime.fromtimestamp(
             today_klines[-1]["t"] / 1000, tz=datetime.timezone.utc
         )
@@ -85,43 +78,42 @@ def fetch_intraday_flow(symbol):
             "main_net_inflow": float(net_flow_usd),
         }
 
-    except requests.exceptions.RequestException as e:
-        print(f"[iTick] {symbol} 請求失敗: {e}")
-        return None
     except Exception as e:
-        print(f"[iTick] {symbol} 解析失敗: {e}")
+        print(f"[iTick] {symbol} 異常: {e}")
         return None
-
 
 def main():
     rows = []
-    for symbol, name in SECTOR_ETFS.items():
+    # 因為免費版限每分鐘 5 次，我哋將請求分批處理
+    for i, (symbol, name) in enumerate(SECTOR_ETFS.items()):
         print(f"處理 {symbol} ({name})...", end=" ", flush=True)
         flow = fetch_intraday_flow(symbol)
 
-        if flow:
+        # 👈 如果遇到 429，強制休息 15 秒再試下一隻（避開每分鐘限制）
+        if flow == "429":
+            print("觸發限流 (429)，等待 15 秒...")
+            time.sleep(15)
+            # 重新試一次
+            flow = fetch_intraday_flow(symbol)
+
+        if flow and flow != "429":
             print(f"成功 (淨流: ${flow['main_net_inflow']:,.0f})")
             rows.append({
-                "symbol": symbol,
-                "name": name,
-                "time": flow["time"],
-                "main_net_inflow": flow["main_net_inflow"],
+                "symbol": symbol, "name": name,
+                "time": flow["time"], "main_net_inflow": flow["main_net_inflow"],
             })
         else:
             print("失敗或無數據")
             rows.append({
-                "symbol": symbol,
-                "name": name,
-                "main_net_inflow": None,
-                "time": "—",
+                "symbol": symbol, "name": name,
+                "main_net_inflow": None, "time": "—",
             })
 
-        # 免費套餐每分鐘限 5 次調用，每次之間休息 1 秒確保安全
-        import time
-        time.sleep(1)
+        # 👈 每隻之間休息 2 秒，總共 11 隻約需 22 秒，完美避開 5次/分鐘 限制
+        time.sleep(2)
 
     output = {
-        "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "note": "盤中即時估算（iTick 1分鐘K線，對比昨收）",
         "sectors": rows,
     }
@@ -131,7 +123,6 @@ def main():
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     print(f"\n完成，已寫入 data/flow/intraday.json（{len(rows)} 個板塊）")
-
 
 if __name__ == "__main__":
     main()
