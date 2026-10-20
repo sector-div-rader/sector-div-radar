@@ -42,12 +42,12 @@ jobs:
           git push
 
   # ==========================================
-  # 任務 2：盤中即時估算資金流（HTTP REST API）
+  # 任務 2：盤中即時資金流（iTick API）
   # ==========================================
   intraday:
-    needs: flow                    # 等 flow 任務完成後才執行
+    needs: flow
     runs-on: ubuntu-latest
-    timeout-minutes: 3             # 強制 3 分鐘超時，防止卡死
+    timeout-minutes: 3
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
 
       - name: Run intraday flow scraper
         env:
-          LONGBRIDGE_OAUTH_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
+          ITICK_TOKEN: ${{ secrets.ITICK_TOKEN }}
         run: python scripts/intraday_flow.py
 
       - name: Commit and push
