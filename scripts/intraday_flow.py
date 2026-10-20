@@ -1,9 +1,9 @@
 import os
 import json
-import datetime
 import base64
-import time  # 👈 加入 time
-from longbridge.openapi import QuoteContext, Config, OAuthBuilder
+import requests
+import datetime
+import time
 
 SECTOR_ETFS = {
     "XLK": "科技", "XLF": "金融", "XLE": "能源", "XLV": "醫療保健",
@@ -11,29 +11,42 @@ SECTOR_ETFS = {
     "XLI": "工業", "XLB": "原材料", "XLRE": "房地產", "XLC": "通訊服務",
 }
 
-def get_quote_context():
-    # ... (保持不變) ...
-    client_id = os.environ.get("LONGBRIDGE_CLIENT_ID")
-    token_cache_b64 = os.environ.get("LONGBRIDGE_OAUTH_TOKEN_CACHE_B64")
+def get_access_token():
+    """從 GitHub Secrets 的 Base64 中解析出 access_token"""
+    b64_str = os.environ.get("LONGBRIDGE_OAUTH_TOKEN_CACHE_B64")
+    if not b64_str:
+        raise RuntimeError("缺少 LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 環境變數")
     
-    if not client_id or not token_cache_b64:
-        raise RuntimeError("缺少環境變數")
-
-    cache_dir = os.path.expanduser("~/.longbridge/openapi/tokens/")
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, client_id)
-    
-    with open(cache_path, "wb") as f:
-        f.write(base64.b64decode(token_cache_b64))
-
-    oauth = OAuthBuilder(client_id).build(lambda url: None) # 避免印出長 URL 塞爆 Log
-    config = Config.from_oauth(oauth)
-    return QuoteContext(config)
-
-def fetch_active_flow(ctx, symbol):
     try:
-        # 💡 優化：只攞最近 100 筆成交，已經足夠反映當下幾分鐘嘅主動買賣方向，大幅加快速度
-        trades = ctx.trades(f"{symbol}.US", 100)
+        # 解碼 Base64 並轉換為 JSON
+        token_info = json.loads(base64.b64decode(b64_str).decode('utf-8'))
+        return token_info.get("access_token")
+    except Exception as e:
+        print(f"❌ 解析 Token 失敗: {e}")
+        return None
+
+def fetch_active_flow_http(access_token, symbol):
+    """使用 HTTP GET 請求長橋 REST API"""
+    url = "https://openapi.longbridge.com/v1/quote/trades"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    params = {
+        "symbol": f"{symbol}.US",
+        "count": 100
+    }
+    
+    try:
+        # ⚠️ 核心：強制設定 timeout=10，如果 10 秒無回應就自動放棄
+        res = requests.get(url, headers=headers, params=params, timeout=10)
+        
+        if res.status_code != 200:
+            print(f"[HTTP {res.status_code}]", end=" ")
+            return None
+            
+        data = res.json()
+        trades = data.get("data", {}).get("trades", [])
         
         if not trades:
             return None
@@ -42,48 +55,58 @@ def fetch_active_flow(ctx, symbol):
         active_sell_amount = 0.0
         
         for t in trades:
-            price = float(t.price)
-            volume = t.volume
+            price = float(t.get("price", 0))
+            volume = int(t.get("volume", 0))
             amount = price * volume
             
-            if t.direction == 2:
+            direction = t.get("direction")
+            if direction == 2:     # 2 = Up (主動買入)
                 active_buy_amount += amount
-            elif t.direction == 1:
+            elif direction == 1:   # 1 = Down (主動賣出)
                 active_sell_amount += amount
 
         net_flow_usd = active_buy_amount - active_sell_amount
-        time_str = datetime.datetime.fromtimestamp(trades[0].timestamp).strftime('%H:%M')
+        time_str = datetime.datetime.now().strftime('%H:%M')
+
+        return {
+            "time": time_str,
+            "main_net_inflow": float(net_flow_usd)
+        }
         
-        return {"time": time_str, "main_net_inflow": float(net_flow_usd)}
-    except Exception as e:
-        print(f"  [Longbridge] {symbol} 失敗: {e}")
+    except requests.exceptions.RequestException:
+        # 捕捉超時或網絡錯誤，靜默跳過
         return None
 
 def main():
-    print("🔐 正在建立連線...")
-    ctx = get_quote_context()
-    print("✅ 連線成功，開始拉取數據...\n")
+    print("🔐 解析 Token...")
+    access_token = get_access_token()
+    if not access_token:
+        print("❌ 無法獲取 access_token，請檢查 Secret")
+        return
+        
+    print("✅ 獲取成功，開始拉取數據...\n")
     rows = []
     
     for symbol, name in SECTOR_ETFS.items():
-        print(f"處理 {symbol} ({name})...", end=" ", flush=True) # 👈 印出進度
-        flow = fetch_active_flow(ctx, symbol)
+        print(f"處理 {symbol} ({name})...", end=" ", flush=True)
+        flow = fetch_active_flow_http(access_token, symbol)
         
         if flow:
-            print(f"成功 (時間: {flow['time']}, 淨流: ${flow['main_net_inflow']:.2f})")
+            print(f"成功 (淨流: ${flow['main_net_inflow']:.2f})")
             rows.append({
                 "symbol": symbol, "name": name,
                 "time": flow["time"], "main_net_inflow": flow["main_net_inflow"],
             })
         else:
-            print("失敗")
+            print("失敗或無數據")
             rows.append({"symbol": symbol, "name": name, "main_net_inflow": None, "time": "—"})
         
-        time.sleep(0.5) # 👈 每隻 ETF 之間強制休息 0.5 秒，避免觸發長橋限流
+        # 每隻之間休息 0.5 秒，避免觸發限流
+        time.sleep(0.5)
 
     output = {
         "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
-        "note": "盤中即時主動買賣盤估算（Longbridge OpenAPI Tick Data）",
+        "note": "盤中即時主動買賣盤（Longbridge HTTP API）",
         "sectors": rows,
     }
 
