@@ -1,72 +1,72 @@
 {
-  "updated_at": "2026-10-21T09:22:14.620445+00:00",
+  "updated_at": "2026-10-21T09:39:18.250778+00:00",
   "note": "盤中即時估算（yfinance 1分鐘線，對比昨收）",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
       "time": "03:59",
-      "main_net_inflow": -3840445.9032997787
+      "main_net_inflow": -4108103.9658889878
     },
     {
       "symbol": "XLF",
       "name": "金融",
       "time": "03:59",
-      "main_net_inflow": 13854956.314270906
+      "main_net_inflow": 11630845.20948779
     },
     {
       "symbol": "XLE",
       "name": "能源",
       "time": "03:59",
-      "main_net_inflow": 9562528.221438857
+      "main_net_inflow": 9940833.275038319
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
       "time": "03:59",
-      "main_net_inflow": 67101524.80553616
+      "main_net_inflow": 57475495.01664566
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
       "time": "03:59",
-      "main_net_inflow": 7573050.813442848
+      "main_net_inflow": 18126168.799502485
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
       "time": "03:59",
-      "main_net_inflow": 16393839.37148676
+      "main_net_inflow": 7792312.324708209
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
       "time": "03:59",
-      "main_net_inflow": 8512686.476899603
+      "main_net_inflow": 8512670.11538947
     },
     {
       "symbol": "XLI",
       "name": "工業",
       "time": "03:59",
-      "main_net_inflow": 2019080.8749911701
+      "main_net_inflow": 2576451.948854036
     },
     {
       "symbol": "XLB",
       "name": "原材料",
       "time": "03:59",
-      "main_net_inflow": 3023344.264801761
+      "main_net_inflow": 3022214.733809657
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
       "time": "03:59",
-      "main_net_inflow": 7810155.428935092
+      "main_net_inflow": 4649457.102800226
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
       "time": "03:59",
-      "main_net_inflow": 516677.69886526733
+      "main_net_inflow": 325464.2379184458
     }
   ]
 }
