@@ -1,72 +1,72 @@
 {
-  "updated_at": "2026-10-21T19:03:53.756792+00:00",
+  "updated_at": "2026-10-21T19:38:01.024617+00:00",
   "note": "盤中即時估算（yfinance 1分鐘線，對比昨收）",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "time": "03:02",
-      "main_net_inflow": 19250828.31359072
+      "time": "03:36",
+      "main_net_inflow": 31827283.727345094
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "time": "03:02",
-      "main_net_inflow": 3870668.8733838615
+      "time": "03:36",
+      "main_net_inflow": 6398825.271859402
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "time": "03:02",
-      "main_net_inflow": 11737579.637725914
+      "time": "03:36",
+      "main_net_inflow": 6009286.1285284385
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "time": "03:02",
-      "main_net_inflow": -8231693.814874504
+      "time": "03:36",
+      "main_net_inflow": -7107285.944806714
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "time": "03:02",
-      "main_net_inflow": -1772259.6327226
+      "time": "03:36",
+      "main_net_inflow": 459773.0931506332
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "time": "03:02",
-      "main_net_inflow": -16384215.791625597
+      "time": "03:36",
+      "main_net_inflow": -15501973.352435853
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "time": "03:02",
-      "main_net_inflow": 8290369.704913291
+      "time": "03:36",
+      "main_net_inflow": 9320596.657725165
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "time": "03:02",
-      "main_net_inflow": 3481805.9293027627
+      "time": "03:36",
+      "main_net_inflow": 7342724.010515785
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "time": "03:02",
-      "main_net_inflow": -1041606.2098917121
+      "time": "03:36",
+      "main_net_inflow": 283914.6012180774
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "time": "03:02",
-      "main_net_inflow": -3598338.406715618
+      "time": "03:36",
+      "main_net_inflow": -5495717.459059883
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "time": "03:02",
-      "main_net_inflow": -16659401.986790046
+      "time": "03:36",
+      "main_net_inflow": -16198005.099851027
     }
   ]
 }
