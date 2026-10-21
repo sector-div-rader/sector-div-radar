@@ -1,106 +1,106 @@
 {
   "as_of": "2026-10-21",
-  "updated_at": "2026-10-21T17:49:51.379865Z",
+  "updated_at": "2026-10-21T18:16:31.566117Z",
   "source_note": "Eulerpool creation/redemption flows; volume-price proxy fallback",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "net_flow_1d": -704898583.0,
-      "net_flow_5d": -18544514.77261704,
-      "net_flow_20d": -54767993.73437574,
+      "net_flow_1d": -3423666.0,
+      "net_flow_5d": -16230969.12990739,
+      "net_flow_20d": -52957913.90140589,
       "source": "eulerpool",
-      "rs_vs_spy": -775630981.2343731
+      "rs_vs_spy": -88360207.79015929
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "net_flow_1d": 662890883.0,
-      "net_flow_5d": 47970577.33140606,
-      "net_flow_20d": 53899359.83296498,
+      "net_flow_1d": 758224.0,
+      "net_flow_5d": 47820980.803794295,
+      "net_flow_20d": 53379058.5550761,
       "source": "eulerpool",
-      "rs_vs_spy": 592158484.7656269
+      "rs_vs_spy": -84178317.79015929
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "net_flow_1d": 53627428.0,
-      "net_flow_5d": 10843199.420702064,
-      "net_flow_20d": 182667831.1244451,
+      "net_flow_1d": -2135630.0,
+      "net_flow_5d": 13848042.740886338,
+      "net_flow_20d": 185976185.8648601,
       "source": "eulerpool",
-      "rs_vs_spy": -17104970.234373152
+      "rs_vs_spy": -87072171.79015929
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "net_flow_1d": 974995597.0,
-      "net_flow_5d": 37084399.49285541,
-      "net_flow_20d": 82143779.582564,
+      "net_flow_1d": 67526.0,
+      "net_flow_5d": 38855134.72176301,
+      "net_flow_20d": 83870162.00201261,
       "source": "eulerpool",
-      "rs_vs_spy": 904263198.7656269
+      "rs_vs_spy": -84869015.79015929
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "net_flow_1d": 265003766.0,
-      "net_flow_5d": 37272012.4160049,
-      "net_flow_20d": 37472798.77909834,
+      "net_flow_1d": -348850.0,
+      "net_flow_5d": 37444285.57705245,
+      "net_flow_20d": 37479443.82723872,
       "source": "eulerpool",
-      "rs_vs_spy": 194271367.76562685
+      "rs_vs_spy": -85285391.79015929
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "net_flow_1d": 188491880.0,
-      "net_flow_5d": 19061998.34285699,
-      "net_flow_20d": 60743298.52490438,
+      "net_flow_1d": 304519.0,
+      "net_flow_5d": 19044963.312105004,
+      "net_flow_20d": 60758124.57728993,
       "source": "eulerpool",
-      "rs_vs_spy": 117759481.76562685
+      "rs_vs_spy": -84632022.79015929
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "net_flow_1d": 204822062.0,
-      "net_flow_5d": 11654884.683294307,
-      "net_flow_20d": 87497090.70478246,
+      "net_flow_1d": -923791.0,
+      "net_flow_5d": 11513974.78064395,
+      "net_flow_20d": 87300380.5704795,
       "source": "eulerpool",
-      "rs_vs_spy": 134089663.76562685
+      "rs_vs_spy": -85860332.79015929
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "net_flow_1d": -95958010.0,
-      "net_flow_5d": 12081038.59727753,
-      "net_flow_20d": -10447991.271488015,
+      "net_flow_1d": -1146030.0,
+      "net_flow_5d": 12925506.44863681,
+      "net_flow_20d": -9698491.076295115,
       "source": "eulerpool",
-      "rs_vs_spy": -166690408.23437315
+      "rs_vs_spy": -86082571.79015929
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "net_flow_1d": 146959640.0,
-      "net_flow_5d": 17644406.86795061,
-      "net_flow_20d": 11580589.113892196,
+      "net_flow_1d": -87324.0,
+      "net_flow_5d": 18064479.235708214,
+      "net_flow_20d": 11983615.669005297,
       "source": "eulerpool",
-      "rs_vs_spy": 76227241.76562685
+      "rs_vs_spy": -85023865.79015929
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "net_flow_1d": 20777904.0,
-      "net_flow_5d": 5174577.191121455,
-      "net_flow_20d": 2692284.05324772,
+      "net_flow_1d": -175442.0,
+      "net_flow_5d": 5274871.483287125,
+      "net_flow_20d": 2769614.582574647,
       "source": "eulerpool",
-      "rs_vs_spy": -49954494.23437315
+      "rs_vs_spy": -85111983.79015929
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "net_flow_1d": 295818974.0,
-      "net_flow_5d": -7987630.813973269,
-      "net_flow_20d": -19919047.694017615,
+      "net_flow_1d": 355802.0,
+      "net_flow_5d": -7542415.999398568,
+      "net_flow_20d": -19338341.934742063,
       "source": "eulerpool",
-      "rs_vs_spy": 225086575.76562685
+      "rs_vs_spy": -84580739.79015929
     }
   ]
 }
