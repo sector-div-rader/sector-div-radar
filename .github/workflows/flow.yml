@@ -37,7 +37,7 @@ jobs:
       - name: Run intraday flow
         env:
           LONGBRIDGE_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
-          LONGBRIDGE_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_TOKEN_CACHE_B64 }}
+          LONGBRIDGE_OAUTH_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
           LONGBRIDGE_REGION: hk
         run: python scripts/intraday_flow.py
 
