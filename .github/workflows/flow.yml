@@ -61,11 +61,17 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/flow dashboard_data.json history.csv backtest_results.json || true
+                   # 👇 改做咁樣，加晒所有檔案 👇
+          git add .
+          
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
           git commit -m "Update intraday flow $(date -u +'%Y-%m-%dT%H:%M')"
+          
+          # 喺 pull 之前，強制清理未追蹤嘅暫存檔 (防止再有漏網之魚)
+          git clean -fd
+          
           git pull --rebase origin main
           git push
