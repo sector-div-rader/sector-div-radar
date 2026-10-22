@@ -183,7 +183,7 @@
   <span>⚡ 0DTE Radar Dashboard V20.2</span>
   <button class="btn" onclick="toggleTheme()" id="theme-btn">🌙</button>
 </h1>
-<p style="color:var(--muted);">最後更新：2026-10-22 19:41 HKT</p>
+<p style="color:var(--muted);">最後更新：2026-10-22 19:54 HKT</p>
 
 <div class="stats">
   <div class="stat-box">
@@ -506,13 +506,13 @@
                   <td>27</td>
                   <td>+0.70%</td>
                 </tr>
-                <tr data-ticker="DX-Y.NYB" data-level="M" data-direction="底" data-winrate="76.5" data-count="34" data-avgchange="1.82">
+                <tr data-ticker="DX-Y.NYB" data-level="M" data-direction="底" data-winrate="76.5" data-count="34" data-avgchange="1.83">
                   <td>DX-Y.NYB</td>
                   <td>M</td>
                   <td>🟢 底</td>
                   <td style="color:#3fb950;font-weight:bold;">76.5%</td>
                   <td>34</td>
-                  <td>+1.82%</td>
+                  <td>+1.83%</td>
                 </tr>
                 <tr data-ticker="DX-Y.NYB" data-level="M" data-direction="頂" data-winrate="46.2" data-count="39" data-avgchange="-0.28">
                   <td>DX-Y.NYB</td>
@@ -1122,12 +1122,12 @@
                   <td>225</td>
                   <td>+0.28%</td>
                 </tr>
-                <tr data-ticker="XLV" data-level="D" data-direction="頂" data-winrate="45.7" data-count="532" data-avgchange="0.25">
+                <tr data-ticker="XLV" data-level="D" data-direction="頂" data-winrate="45.8" data-count="531" data-avgchange="0.25">
                   <td>XLV</td>
                   <td>D</td>
                   <td>🔴 頂</td>
-                  <td style="color:#f85149;">45.7%</td>
-                  <td>532</td>
+                  <td style="color:#f85149;">45.8%</td>
+                  <td>531</td>
                   <td>+0.25%</td>
                 </tr>
                 <tr data-ticker="XLV" data-level="4H" data-direction="底" data-winrate="83.3" data-count="6" data-avgchange="1.82">
@@ -1281,23 +1281,24 @@
 
 <!-- 資金流區塊 開始 -->
 <h2>💰 資金流分析</h2>
+
 <div class="card">
-  <h3 style="font-size:16px;margin-top:0;color:var(--accent);">📊 前一個交易日資金流 (官方數據)</h3>
-  <p id="latest-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
-  <div class="grid-2">
-    <div><div id="latest-flow-table"></div></div>
-    <div><div id="latest-flow-chart" style="height:350px;"></div></div>
-  </div>
-</div>
-<div class="card" style="margin-top:15px;">
   <h3 style="font-size:16px;margin-top:0;color:var(--accent);">⚡ 即時盤中資金流 (Longbridge)</h3>
   <p id="intraday-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
+  
+  <!-- 時段切換按鈕 -->
   <div class="controls" style="margin-bottom:10px; padding:10px;">
     <button class="btn active" onclick="switchIntradayPeriod('all', this)">全日累計</button>
     <button class="btn" onclick="switchIntradayPeriod('open_1h', this)">開盤頭1小時</button>
     <button class="btn" onclick="switchIntradayPeriod('mid', this)">盤中時段</button>
     <button class="btn" onclick="switchIntradayPeriod('close_1h', this)">收市前1小時</button>
   </div>
+
+  <!-- 👇 智能提示區 👇 -->
+  <div id="flow-insights" style="display:none; margin-bottom:15px; padding:12px; background:rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; border-radius: 4px; font-size:13px; line-height: 1.6;">
+      <!-- 提示內容會由 JS 自動填入 -->
+  </div>
+
   <div class="grid-2">
     <div><div id="intraday-flow-table"></div></div>
     <div><div id="intraday-flow-chart" style="height:350px;"></div></div>
