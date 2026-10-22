@@ -2,7 +2,8 @@ name: Update intraday flow
 
 on:
   schedule:
-    - cron: "0 * * * *"        # 每小時一次，按需要改
+    # 每個鐘嘅第 15 分鐘跑（避開整點塞車）
+    - cron: "15 * * * *"
   workflow_dispatch:
 
 permissions:
