@@ -3,7 +3,6 @@ import json
 import datetime
 import time
 import pandas as pd
-import yfinance as yf
 from longbridge.openapi import QuoteContext, Config, OAuthBuilder
 
 SECTOR_ETFS = {
@@ -62,75 +61,9 @@ def fetch_intraday_flow(ctx, symbol):
         print(f"  [Longbridge] {symbol} 失敗: {e}", flush=True)
         return None
 
-def generate_latest_flow():
-    """用 yfinance 抓取前一日及歷史累計數據，寫入 latest.json"""
-    print("正在生成前一個交易日數據 (latest.json)...", flush=True)
-    rows = []
-    today_date = datetime.datetime.now().date()
-    target_date = "—"
-
-    for symbol, name in SECTOR_ETFS.items():
-        try:
-            ticker = yf.Ticker(symbol)
-            # 抓取最近一個月嘅日線數據，用嚟計 5日同 20日累計
-            df = ticker.history(period="1mo", interval="1d")
-            
-            if len(df) >= 2:
-                # 判斷最後一行係咪今日（如果係，前一日就係倒數第二行）
-                if df.index[-1].date() == today_date:
-                    target_row = df.iloc[-2]
-                    target_date = df.index[-2].strftime('%Y-%m-%d')
-                    calc_df = df.iloc[:-1]
-                else:
-                    target_row = df.iloc[-1]
-                    target_date = df.index[-1].strftime('%Y-%m-%d')
-                    calc_df = df
-
-                # 估算當日資金流：(收盤 - 開盤) * 成交量
-                net_flow_1d = float((target_row['Close'] - target_row['Open']) * target_row['Volume'])
-                
-                # 計算 5日 及 20日累計
-                calc_df = calc_df.copy() # 避免 SettingWithCopyWarning
-                calc_df['flow'] = (calc_df['Close'] - calc_df['Open']) * calc_df['Volume']
-                net_flow_5d = float(calc_df['flow'].tail(5).sum())
-                net_flow_20d = float(calc_df['flow'].tail(20).sum())
-                rs_vs_spy = float(net_flow_1d / 1e8) # 模擬相對強弱
-
-                rows.append({
-                    "symbol": symbol,
-                    "name": name,
-                    "net_flow_1d": net_flow_1d,
-                    "net_flow_5d": net_flow_5d,
-                    "net_flow_20d": net_flow_20d,
-                    "rs_vs_spy": rs_vs_spy
-                })
-                print(f"  ✅ {symbol} 歷史數據成功", flush=True)
-            else:
-                print(f"  ⚠️ {symbol} 數據不足", flush=True)
-        except Exception as e:
-            print(f"  ❌ [Latest] {symbol} 失敗: {e}", flush=True)
-            
-        time.sleep(0.5) # 避免 yfinance 限流
-
-    output = {
-        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "as_of": target_date,
-        "source_note": "前一日日線估算數據 (yfinance)",
-        "sectors": rows
-    }
-
-    os.makedirs("data/flow", exist_ok=True)
-    with open("data/flow/latest.json", "w", encoding="utf-8") as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
-    print("✅ 已生成 data/flow/latest.json\n", flush=True)
-
 def main():
     print("正在啟動程序...", flush=True)
     
-    # 1. 生成歷史數據 (latest.json)
-    generate_latest_flow()
-
-    # 2. 生成即時數據 (intraday.json)
     print("正在連接長橋 API...", flush=True)
     try:
         ctx = init_longbridge()
@@ -174,6 +107,7 @@ def main():
         "sectors": rows,
     }
 
+    os.makedirs("data/flow", exist_ok=True)
     with open("data/flow/intraday.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
