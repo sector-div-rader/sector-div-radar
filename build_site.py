@@ -3,6 +3,7 @@
 # V20.2 改動：
 #   1. 回測區合併「底背離 + 頂背離」一個表
 #   2. 回測區欄位可排序
+#   3. 新增資金流分析區塊
 # ============================================
 
 import os
@@ -366,6 +367,10 @@ def build_html():
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>⚡ 0DTE Radar Dashboard V20.2</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- 資金流依賴 (Tabulator & ECharts) -->
+<link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
+<script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <style>
   * {{ box-sizing: border-box; }}
   :root {{
@@ -610,6 +615,32 @@ def build_html():
 </div>
 
 {backtest_html}
+
+<!-- 資金流區塊 開始 -->
+<h2>💰 資金流分析</h2>
+<div class="card">
+  <h3 style="font-size:16px;margin-top:0;color:var(--accent);">📊 前一個交易日資金流 (官方數據)</h3>
+  <p id="latest-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
+  <div class="grid-2">
+    <div><div id="latest-flow-table"></div></div>
+    <div><div id="latest-flow-chart" style="height:350px;"></div></div>
+  </div>
+</div>
+<div class="card" style="margin-top:15px;">
+  <h3 style="font-size:16px;margin-top:0;color:var(--accent);">⚡ 即時盤中資金流 (Longbridge)</h3>
+  <p id="intraday-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
+  <div class="controls" style="margin-bottom:10px; padding:10px;">
+    <button class="btn active" onclick="switchIntradayPeriod('all', this)">全日累計</button>
+    <button class="btn" onclick="switchIntradayPeriod('open_1h', this)">開盤頭1小時</button>
+    <button class="btn" onclick="switchIntradayPeriod('mid', this)">盤中時段</button>
+    <button class="btn" onclick="switchIntradayPeriod('close_1h', this)">收市前1小時</button>
+  </div>
+  <div class="grid-2">
+    <div><div id="intraday-flow-table"></div></div>
+    <div><div id="intraday-flow-chart" style="height:350px;"></div></div>
+  </div>
+</div>
+<!-- 資金流區塊 結束 -->
 
 <h2>🔥 今日訊號</h2>
 
@@ -889,7 +920,8 @@ if (nqBar) {{
   nqBar.appendChild(marker);
 }}
 </script>
-
+<!-- 引入資金流邏輯 -->
+<script src="assets/flow.js"></script>
 </body>
 </html>"""
 
