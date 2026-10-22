@@ -619,15 +619,23 @@ def build_html():
 <!-- 資金流區塊 開始 -->
 <h2>💰 資金流分析</h2>
 
-<div class="card" style="margin-top:15px;">
+<div class="card">
   <h3 style="font-size:16px;margin-top:0;color:var(--accent);">⚡ 即時盤中資金流 (Longbridge)</h3>
   <p id="intraday-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
+  
+  <!-- 時段切換按鈕 -->
   <div class="controls" style="margin-bottom:10px; padding:10px;">
     <button class="btn active" onclick="switchIntradayPeriod('all', this)">全日累計</button>
     <button class="btn" onclick="switchIntradayPeriod('open_1h', this)">開盤頭1小時</button>
     <button class="btn" onclick="switchIntradayPeriod('mid', this)">盤中時段</button>
     <button class="btn" onclick="switchIntradayPeriod('close_1h', this)">收市前1小時</button>
   </div>
+
+  <!-- 👇 智能提示區 👇 -->
+  <div id="flow-insights" style="display:none; margin-bottom:15px; padding:12px; background:rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; border-radius: 4px; font-size:13px; line-height: 1.6;">
+      <!-- 提示內容會由 JS 自動填入 -->
+  </div>
+
   <div class="grid-2">
     <div><div id="intraday-flow-table"></div></div>
     <div><div id="intraday-flow-chart" style="height:350px;"></div></div>
