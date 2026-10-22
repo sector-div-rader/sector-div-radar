@@ -36,7 +36,10 @@ jobs:
 
       - name: Run intraday flow
         env:
-          DATA_API_KEY: ${{ secrets.DATA_API_KEY }}
+          # 如果你腳本用 FMP，就改做 FMP_API_KEY
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          # 如果有其他 Key 都用得着，可以繼續加
+          ITTICK_TOKEN: ${{ secrets.ITTICK_TOKEN }}
         run: python scripts/intraday_flow.py
 
       # 如果你有 build_site.py / backtest.py，照以下格式加：
