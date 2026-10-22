@@ -36,7 +36,8 @@ jobs:
 
       - name: Run intraday flow
         env:
-          LONGBRIDGE_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
+          # 左邊必須是 Python 要找的變數名，右邊是你 GitHub 上的 Secret 名
+          LONGBRIDGE_OAUTH_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
           LONGBRIDGE_OAUTH_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
           LONGBRIDGE_REGION: hk
         run: python scripts/intraday_flow.py
