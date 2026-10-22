@@ -42,12 +42,12 @@ jobs:
           ITTICK_TOKEN: ${{ secrets.ITTICK_TOKEN }}
         run: python scripts/intraday_flow.py
 
-      # 如果你有 build_site.py / backtest.py，照以下格式加：
-      # - name: Run backtest
-      #   run: python backtest.py
-      #
-      # - name: Build site
-      #   run: python build_site.py
+       #如果你有 build_site.py / backtest.py，照以下格式加：
+      - name: Run backtest
+        run: python backtest.py
+      
+      - name: Build site
+        run: python build_site.py
 
       - name: Commit changes
         run: |
