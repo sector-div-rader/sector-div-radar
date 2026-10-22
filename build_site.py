@@ -618,14 +618,7 @@ def build_html():
 
 <!-- 資金流區塊 開始 -->
 <h2>💰 資金流分析</h2>
-<div class="card">
-  <h3 style="font-size:16px;margin-top:0;color:var(--accent);">📊 前一個交易日資金流 (官方數據)</h3>
-  <p id="latest-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
-  <div class="grid-2">
-    <div><div id="latest-flow-table"></div></div>
-    <div><div id="latest-flow-chart" style="height:350px;"></div></div>
-  </div>
-</div>
+
 <div class="card" style="margin-top:15px;">
   <h3 style="font-size:16px;margin-top:0;color:var(--accent);">⚡ 即時盤中資金流 (Longbridge)</h3>
   <p id="intraday-updated" style="color:var(--muted);font-size:13px;margin-top:0;">載入中...</p>
