@@ -12,14 +12,20 @@ SECTOR_ETFS = {
 }
 
 def init_longbridge():
-    """初始化長橋 API"""
-    # SDK 會自動讀取 GitHub Actions 入面嘅 LONGBRIDGE_OAUTH_CLIENT_ID 同 LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 環境變數
+    print("正在初始化長橋認證...", flush=True)
     client_id = os.getenv("LONGBRIDGE_OAUTH_CLIENT_ID")
     if not client_id:
-        raise ValueError("找不到 LONGBRIDGE_OAUTH_CLIENT_ID，請檢查 GitHub Secrets 或本機環境變數。")
+        raise ValueError("❌ 找不到 LONGBRIDGE_OAUTH_CLIENT_ID！")
         
-    oauth = OAuthBuilder(client_id).build(lambda url: print("請訪問:", url))
+    # 強制打印出嚟，確保 GitHub Actions 見到
+    print(f"獲取到 Client ID: {client_id[:5]}...", flush=True)
+    
+    # 呢句可能會卡死，如果我哋見到呢句但冇下一步，就代表 Token 錯咗
+    print("正在讀取 Token Cache...", flush=True)
+    oauth = OAuthBuilder(client_id).build(lambda url: print(f"⚠️ 需要授權，請訪問: {url}", flush=True))
+    
     config = Config.from_oauth(oauth)
+    print("✅ 長橋認證成功！正在建立連線...", flush=True)
     return QuoteContext(config)
 
 def fetch_intraday_flow(ctx, symbol):
@@ -82,12 +88,14 @@ def fetch_intraday_flow(ctx, symbol):
         return None
 
 def main():
-    print("正在連接長橋 API...")
+    print("正在啟動程序...", flush=True)
     try:
         ctx = init_longbridge()
     except Exception as e:
-        print(f"長橋初始化失敗: {e}")
+        print(f"❌ 長橋初始化失敗: {e}", flush=True)
         return
+
+
 
     rows = []
     for symbol, name in SECTOR_ETFS.items():
