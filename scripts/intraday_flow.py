@@ -37,14 +37,16 @@ def fetch_intraday_flow(ctx, symbol):
         lb_symbol = f"{symbol}.US"
         resp = ctx.capital_flow(lb_symbol)
         
-        if not resp or not resp.capital_flow_lines:
-            return None
+        # 新代碼（修正回傳結構）
+        # 1. 如果回傳係空，直接返回
+if not resp:
+    return None
 
-        # 整理成 DataFrame
-        df = pd.DataFrame([
-            {"timestamp": line.timestamp, "net_inflow": float(line.inflow)} 
-            for line in resp.capital_flow_lines
-        ])
+# 2. 直接遍歷 resp 列表，無需訪問 capital_flow_lines 屬性
+df = pd.DataFrame([
+    {"timestamp": line.timestamp, "net_inflow": float(line.inflow)} 
+    for line in resp
+])
 
         if df.empty:
             return None
