@@ -1,73 +1,59 @@
-name: Sector Flow Pipeline
+name: Update intraday flow
 
 on:
   schedule:
-    - cron: '17 0 * * 2-6'         # 每日日線（UTC 00:17）
-    - cron: '*/5 13-20 * * 1-5'    # 盤中即時（UTC 13:00-20:00，每 5 分鐘）
-  workflow_dispatch:               # 允許手動觸發
+    - cron: "0 * * * *"        # 每小時一次，按需要改
+  workflow_dispatch:
 
 permissions:
-  contents: write                  # 必須，否則 git push 會失敗
+  contents: write              # 只畀 commit 權限
+
+concurrency:
+  group: intraday-flow
+  cancel-in-progress: false    # 避免兩個 job 同時 push
 
 jobs:
-  # ==========================================
-  # 任務 1：收盤後真實機構資金流（Eulerpool）
-  # ==========================================
-  flow:
+  update:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
-        run: pip install eulerpool yfinance pandas
-
-      - name: Run sector flow scraper
-        env:
-          EULERPOOL_KEY: ${{ secrets.EULERPOOL_KEY }}
-        run: python scripts/sector_flow.py
-
-      - name: Commit and push
         run: |
-          git config user.name 'flow-bot'
-          git config user.email 'bot@users.noreply.github.com'
-          git add data/flow/
-          git diff --staged --quiet || git commit -m "Update sector flow $(date -u +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-  # ==========================================
-  # 任務 2：盤中即時資金流（iTick API）
-  # ==========================================
-  intraday:
-    needs: flow
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install yfinance pandas
-
-      - name: Run intraday flow scraper
+      - name: Run intraday flow
+        env:
+          DATA_API_KEY: ${{ secrets.DATA_API_KEY }}
         run: python scripts/intraday_flow.py
 
-      - name: Commit and push
+      # 如果你有 build_site.py / backtest.py，照以下格式加：
+      # - name: Run backtest
+      #   run: python backtest.py
+      #
+      # - name: Build site
+      #   run: python build_site.py
+
+      - name: Commit changes
         run: |
-          git config user.name 'flow-bot'
-          git config user.email 'bot@users.noreply.github.com'
-          git add data/flow/intraday.json
-          git diff --staged --quiet || git commit -m "Update intraday flow $(date -u +%Y-%m-%dT%H:%M)"
-          git pull --rebase origin main
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/flow dashboard_data.json history.csv backtest_results.json || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update intraday flow $(date -u +'%Y-%m-%dT%H:%M')"
           git push
