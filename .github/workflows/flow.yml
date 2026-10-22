@@ -34,11 +34,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Restore Longbridge Token
+        env:
+          LB_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
+          LB_TOKEN_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
+        run: |
+          mkdir -p ~/.longbridge/openapi/tokens
+          echo "$LB_TOKEN_B64" | base64 -d > ~/.longbridge/openapi/tokens/$LB_CLIENT_ID
+          echo "Token 還原成功！"
+
       - name: Run intraday flow
         env:
-          # 左邊必須是 Python 要找的變數名，右邊是你 GitHub 上的 Secret 名
           LONGBRIDGE_OAUTH_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
-          LONGBRIDGE_OAUTH_TOKEN_CACHE_B64: ${{ secrets.LONGBRIDGE_OAUTH_TOKEN_CACHE_B64 }}
           LONGBRIDGE_REGION: hk
         run: python scripts/intraday_flow.py
 
