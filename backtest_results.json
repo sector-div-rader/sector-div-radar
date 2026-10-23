@@ -288,21 +288,21 @@
         }
       },
       "底": {
-        "total": 60,
+        "total": 59,
         "T+1": {
-          "count": 60,
-          "winRate": 50.0,
-          "avgChange": -0.07
+          "count": 59,
+          "winRate": 52.5,
+          "avgChange": -0.06
         },
         "T+3": {
-          "count": 60,
-          "winRate": 58.3,
+          "count": 59,
+          "winRate": 57.6,
           "avgChange": -0.01
         },
         "T+5": {
-          "count": 60,
-          "winRate": 53.3,
-          "avgChange": -0.08
+          "count": 59,
+          "winRate": 54.2,
+          "avgChange": -0.05
         }
       }
     }
@@ -437,7 +437,7 @@
         },
         "T+5": {
           "count": 27,
-          "winRate": 40.7,
+          "winRate": 37.0,
           "avgChange": 0.7
         }
       },
@@ -496,7 +496,7 @@
         "T+5": {
           "count": 34,
           "winRate": 76.5,
-          "avgChange": 1.82
+          "avgChange": 1.81
         }
       }
     },
@@ -1914,20 +1914,20 @@
     },
     "D": {
       "頂": {
-        "total": 532,
+        "total": 531,
         "T+1": {
-          "count": 532,
-          "winRate": 46.1,
+          "count": 531,
+          "winRate": 46.0,
           "avgChange": 0.03
         },
         "T+3": {
-          "count": 532,
+          "count": 531,
           "winRate": 47.6,
           "avgChange": 0.15
         },
         "T+5": {
-          "count": 532,
-          "winRate": 45.7,
+          "count": 531,
+          "winRate": 45.8,
           "avgChange": 0.25
         }
       },
@@ -2222,20 +2222,20 @@
     },
     "D": {
       "頂": {
-        "total": 476,
+        "total": 477,
         "T+1": {
-          "count": 476,
-          "winRate": 45.4,
+          "count": 477,
+          "winRate": 45.5,
           "avgChange": -0.02
         },
         "T+3": {
-          "count": 476,
-          "winRate": 48.1,
+          "count": 477,
+          "winRate": 48.0,
           "avgChange": 0.04
         },
         "T+5": {
-          "count": 476,
-          "winRate": 45.6,
+          "count": 477,
+          "winRate": 45.7,
           "avgChange": 0.15
         }
       },
