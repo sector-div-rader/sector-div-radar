@@ -1,105 +1,105 @@
 {
-  "updated_at": "2026-10-27T19:27:32.641189+00:00",
+  "updated_at": "2026-10-27T23:48:07.742616+00:00",
   "note": "盤中即時真實資金流（長橋 API，基於逐筆成交）",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "time": "15:26",
-      "main_net_inflow": 18263085394.048004,
+      "time": "16:00",
+      "main_net_inflow": 21445664554.686996,
       "net_inflow_open_1h": -393641863.50600004,
       "net_inflow_mid": 16241628210.824,
-      "net_inflow_close_1h": 2415099046.73
+      "net_inflow_close_1h": 5597678207.3689995
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "time": "15:25",
-      "main_net_inflow": 37137857.566999994,
+      "time": "16:00",
+      "main_net_inflow": -187090101.78500006,
       "net_inflow_open_1h": 139494201.274,
       "net_inflow_mid": 5562999.372000009,
-      "net_inflow_close_1h": -107919343.079
+      "net_inflow_close_1h": -332147302.431
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "time": "15:26",
-      "main_net_inflow": -861958430.345,
+      "time": "16:00",
+      "main_net_inflow": -1742534420.0410001,
       "net_inflow_open_1h": 205987414.83099997,
       "net_inflow_mid": -871223412.826,
-      "net_inflow_close_1h": -196722432.34999996
+      "net_inflow_close_1h": -1077298422.046
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "time": "15:26",
-      "main_net_inflow": 3111995229.346,
+      "time": "16:00",
+      "main_net_inflow": 4137696659.5929995,
       "net_inflow_open_1h": -984349999.222,
       "net_inflow_mid": 3243929633.0000005,
-      "net_inflow_close_1h": 852415595.5680001
+      "net_inflow_close_1h": 1878117025.8149998
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "time": "15:26",
-      "main_net_inflow": -704214037.6659999,
+      "time": "16:00",
+      "main_net_inflow": -848440109.1240001,
       "net_inflow_open_1h": -84114272.34700002,
       "net_inflow_mid": -499017238.052,
-      "net_inflow_close_1h": -121082527.26699999
+      "net_inflow_close_1h": -265308598.72500002
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "time": "15:26",
-      "main_net_inflow": 5554472676.316999,
+      "time": "16:00",
+      "main_net_inflow": 5793552020.541,
       "net_inflow_open_1h": 446244662.82199997,
       "net_inflow_mid": 4500765805.525,
-      "net_inflow_close_1h": 607462207.9699999
+      "net_inflow_close_1h": 846541552.1940001
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "time": "15:26",
-      "main_net_inflow": 282085635.92600006,
+      "time": "16:00",
+      "main_net_inflow": 634740410.854,
       "net_inflow_open_1h": -108898786.744,
       "net_inflow_mid": 211278044.34800002,
-      "net_inflow_close_1h": 179706378.322
+      "net_inflow_close_1h": 532361153.24999994
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "time": "15:26",
-      "main_net_inflow": -5634062047.152,
+      "time": "16:00",
+      "main_net_inflow": -6296960249.877001,
       "net_inflow_open_1h": 214649704.751,
       "net_inflow_mid": -5252730365.538,
-      "net_inflow_close_1h": -595981386.365
+      "net_inflow_close_1h": -1258879589.09
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "time": "15:26",
-      "main_net_inflow": 6669541103.247,
+      "time": "16:00",
+      "main_net_inflow": 7481286143.807999,
       "net_inflow_open_1h": 380445090.34699994,
       "net_inflow_mid": 5583715347.393,
-      "net_inflow_close_1h": 705380665.507
+      "net_inflow_close_1h": 1517125706.068
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "time": "15:26",
-      "main_net_inflow": -78678110.75199997,
+      "time": "16:00",
+      "main_net_inflow": 29832494.152000017,
       "net_inflow_open_1h": 39040906.61799999,
       "net_inflow_mid": -117711653.37499999,
-      "net_inflow_close_1h": -7363.995000000112
+      "net_inflow_close_1h": 108503240.90899998
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "time": "15:26",
-      "main_net_inflow": -3779332691.63,
+      "time": "16:00",
+      "main_net_inflow": -4408243280.84,
       "net_inflow_open_1h": -108891446.33399999,
       "net_inflow_mid": -3242831258.8230004,
-      "net_inflow_close_1h": -427609986.47300005
+      "net_inflow_close_1h": -1056520575.6830001
     }
   ]
 }
