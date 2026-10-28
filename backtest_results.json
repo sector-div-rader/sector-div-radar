@@ -496,7 +496,7 @@
         "T+5": {
           "count": 34,
           "winRate": 76.5,
-          "avgChange": 1.84
+          "avgChange": 1.85
         }
       }
     },
@@ -1248,7 +1248,7 @@
         "T+5": {
           "count": 25,
           "winRate": 36.0,
-          "avgChange": 4.67
+          "avgChange": 4.7
         }
       },
       "底": {
@@ -1464,21 +1464,21 @@
     },
     "D": {
       "頂": {
-        "total": 492,
+        "total": 491,
         "T+1": {
-          "count": 492,
-          "winRate": 47.4,
-          "avgChange": 0.07
+          "count": 491,
+          "winRate": 47.5,
+          "avgChange": 0.06
         },
         "T+3": {
-          "count": 492,
-          "winRate": 46.3,
-          "avgChange": 0.09
+          "count": 491,
+          "winRate": 46.4,
+          "avgChange": 0.08
         },
         "T+5": {
-          "count": 492,
+          "count": 491,
           "winRate": 47.0,
-          "avgChange": 0.04
+          "avgChange": 0.03
         }
       },
       "底": {
@@ -1710,7 +1710,7 @@
         "T+5": {
           "count": 27,
           "winRate": 40.7,
-          "avgChange": 1.5
+          "avgChange": 1.51
         }
       },
       "底": {
@@ -1772,21 +1772,21 @@
     },
     "D": {
       "頂": {
-        "total": 529,
+        "total": 527,
         "T+1": {
-          "count": 529,
-          "winRate": 45.9,
+          "count": 527,
+          "winRate": 46.1,
           "avgChange": 0.06
         },
         "T+3": {
-          "count": 529,
-          "winRate": 41.2,
+          "count": 527,
+          "winRate": 41.4,
           "avgChange": 0.16
         },
         "T+5": {
-          "count": 529,
-          "winRate": 43.1,
-          "avgChange": 0.17
+          "count": 527,
+          "winRate": 43.3,
+          "avgChange": 0.16
         }
       },
       "底": {
@@ -2225,7 +2225,7 @@
         "total": 479,
         "T+1": {
           "count": 479,
-          "winRate": 45.3,
+          "winRate": 45.5,
           "avgChange": -0.01
         },
         "T+3": {
