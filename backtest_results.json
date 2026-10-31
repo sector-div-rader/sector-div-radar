@@ -1772,21 +1772,21 @@
     },
     "D": {
       "頂": {
-        "total": 527,
+        "total": 529,
         "T+1": {
-          "count": 527,
-          "winRate": 46.1,
+          "count": 529,
+          "winRate": 46.3,
           "avgChange": 0.06
         },
         "T+3": {
-          "count": 527,
-          "winRate": 41.4,
+          "count": 529,
+          "winRate": 41.6,
           "avgChange": 0.16
         },
         "T+5": {
-          "count": 527,
-          "winRate": 43.3,
-          "avgChange": 0.16
+          "count": 529,
+          "winRate": 43.5,
+          "avgChange": 0.14
         }
       },
       "底": {
@@ -1914,20 +1914,20 @@
     },
     "D": {
       "頂": {
-        "total": 531,
+        "total": 532,
         "T+1": {
-          "count": 531,
-          "winRate": 46.0,
+          "count": 532,
+          "winRate": 46.1,
           "avgChange": 0.03
         },
         "T+3": {
-          "count": 531,
+          "count": 532,
           "winRate": 47.6,
           "avgChange": 0.15
         },
         "T+5": {
-          "count": 531,
-          "winRate": 45.8,
+          "count": 532,
+          "winRate": 45.7,
           "avgChange": 0.25
         }
       },
