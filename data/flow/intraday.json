@@ -1,105 +1,105 @@
 {
-  "updated_at": "2026-11-04T07:31:46.603347+00:00",
+  "updated_at": "2026-11-04T16:21:25.058077+00:00",
   "note": "盤中即時真實資金流（長橋 API，基於逐筆成交）",
   "sectors": [
     {
       "symbol": "XLK",
       "name": "科技",
-      "time": "16:00",
-      "main_net_inflow": -5019923120.495999,
-      "net_inflow_open_1h": 23559719.445,
-      "net_inflow_mid": -2882436057.94,
-      "net_inflow_close_1h": -2161046782.0009995
+      "time": "11:20",
+      "main_net_inflow": 392299845.304,
+      "net_inflow_open_1h": 44454699.11,
+      "net_inflow_mid": 347845146.194,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLF",
       "name": "金融",
-      "time": "16:00",
-      "main_net_inflow": -9573574625.282001,
-      "net_inflow_open_1h": -688296910.0890001,
-      "net_inflow_mid": -7621216178.438,
-      "net_inflow_close_1h": -1264061536.7550006
+      "time": "11:20",
+      "main_net_inflow": -1432094449.4490001,
+      "net_inflow_open_1h": -748666765.3589998,
+      "net_inflow_mid": -683427684.09,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLE",
       "name": "能源",
-      "time": "16:00",
-      "main_net_inflow": 700911749.0760002,
-      "net_inflow_open_1h": 902331516.5979999,
-      "net_inflow_mid": 501876211.6899998,
-      "net_inflow_close_1h": -703295979.2119999
+      "time": "11:19",
+      "main_net_inflow": 3644564278.1290007,
+      "net_inflow_open_1h": 1886562908.3209999,
+      "net_inflow_mid": 1758001369.8079998,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLV",
       "name": "醫療保健",
-      "time": "16:00",
-      "main_net_inflow": -13295734587.712,
-      "net_inflow_open_1h": 442442987.084,
-      "net_inflow_mid": -11611132431.217999,
-      "net_inflow_close_1h": -2127045143.5779996
+      "time": "11:20",
+      "main_net_inflow": 246565387.981,
+      "net_inflow_open_1h": -344944028.559,
+      "net_inflow_mid": 591509416.5400001,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLY",
       "name": "非必需消費",
-      "time": "16:00",
-      "main_net_inflow": 3248551942.6309996,
-      "net_inflow_open_1h": -51045087.211,
-      "net_inflow_mid": 2424330859.476,
-      "net_inflow_close_1h": 875266170.366
+      "time": "11:19",
+      "main_net_inflow": 1889460276.6330001,
+      "net_inflow_open_1h": 894794277.092,
+      "net_inflow_mid": 994665999.541,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLP",
       "name": "必需消費",
-      "time": "16:00",
-      "main_net_inflow": 15599217354.105,
-      "net_inflow_open_1h": 600980567.5159999,
-      "net_inflow_mid": 9665985213.807999,
-      "net_inflow_close_1h": 5332251572.780999
+      "time": "11:19",
+      "main_net_inflow": 1762900229.1090002,
+      "net_inflow_open_1h": 293516393.0,
+      "net_inflow_mid": 1469383836.109,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLU",
       "name": "公用事業",
-      "time": "16:00",
-      "main_net_inflow": 28875810922.844,
-      "net_inflow_open_1h": 2060503735.9229999,
-      "net_inflow_mid": 22967395503.136,
-      "net_inflow_close_1h": 3847911683.785
+      "time": "11:20",
+      "main_net_inflow": -14726810208.926,
+      "net_inflow_open_1h": -6294421147.444,
+      "net_inflow_mid": -8432389061.481999,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLI",
       "name": "工業",
-      "time": "16:00",
-      "main_net_inflow": 23863465217.734,
-      "net_inflow_open_1h": 155679151.822,
-      "net_inflow_mid": 16733476654.610998,
-      "net_inflow_close_1h": 6974309411.301001
+      "time": "11:20",
+      "main_net_inflow": -1442996072.0500004,
+      "net_inflow_open_1h": -387391312.02,
+      "net_inflow_mid": -1055604760.03,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLB",
       "name": "原材料",
-      "time": "16:00",
-      "main_net_inflow": -2258541739.707,
-      "net_inflow_open_1h": -162900933.71100003,
-      "net_inflow_mid": -1574186634.7189999,
-      "net_inflow_close_1h": -521454171.277
+      "time": "11:19",
+      "main_net_inflow": -1130732106.2339997,
+      "net_inflow_open_1h": -981568420.78,
+      "net_inflow_mid": -149163685.45399997,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLRE",
       "name": "房地產",
-      "time": "16:00",
-      "main_net_inflow": 6270676805.901,
-      "net_inflow_open_1h": 27674084.303,
-      "net_inflow_mid": 2483848977.961,
-      "net_inflow_close_1h": 3759153743.6370006
+      "time": "11:20",
+      "main_net_inflow": 553003946.7449999,
+      "net_inflow_open_1h": 257117112.67900002,
+      "net_inflow_mid": 295886834.06600004,
+      "net_inflow_close_1h": 0.0
     },
     {
       "symbol": "XLC",
       "name": "通訊服務",
-      "time": "16:00",
-      "main_net_inflow": -10484722381.513,
-      "net_inflow_open_1h": -91904852.103,
-      "net_inflow_mid": -2791185110.2710004,
-      "net_inflow_close_1h": -7601632419.139
+      "time": "11:19",
+      "main_net_inflow": 580978666.2639999,
+      "net_inflow_open_1h": 339936007.22499996,
+      "net_inflow_mid": 241042659.039,
+      "net_inflow_close_1h": 0.0
     }
   ]
 }
