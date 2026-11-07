@@ -125,12 +125,12 @@
         "T+3": {
           "count": 17,
           "winRate": 70.6,
-          "avgChange": -0.25
+          "avgChange": -0.56
         },
         "T+5": {
           "count": 17,
-          "winRate": 70.6,
-          "avgChange": -2.33
+          "winRate": 82.4,
+          "avgChange": -2.52
         }
       },
       "底": {
@@ -188,7 +188,7 @@
         "T+5": {
           "count": 4,
           "winRate": 75.0,
-          "avgChange": 3.02
+          "avgChange": 2.99
         }
       }
     },
