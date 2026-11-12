@@ -188,7 +188,7 @@
         "T+5": {
           "count": 4,
           "winRate": 50.0,
-          "avgChange": 2.46
+          "avgChange": 2.42
         }
       }
     },
@@ -1926,20 +1926,20 @@
     },
     "D": {
       "頂": {
-        "total": 533,
+        "total": 534,
         "T+1": {
-          "count": 533,
-          "winRate": 46.0,
+          "count": 534,
+          "winRate": 46.1,
           "avgChange": 0.04
         },
         "T+3": {
-          "count": 533,
-          "winRate": 47.5,
+          "count": 534,
+          "winRate": 47.4,
           "avgChange": 0.16
         },
         "T+5": {
-          "count": 533,
-          "winRate": 45.8,
+          "count": 534,
+          "winRate": 45.7,
           "avgChange": 0.25
         }
       },
