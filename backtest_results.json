@@ -125,12 +125,12 @@
         "T+3": {
           "count": 17,
           "winRate": 70.6,
-          "avgChange": -0.77
+          "avgChange": -0.79
         },
         "T+5": {
           "count": 17,
           "winRate": 82.4,
-          "avgChange": -2.41
+          "avgChange": -2.39
         }
       },
       "底": {
@@ -188,7 +188,7 @@
         "T+5": {
           "count": 4,
           "winRate": 50.0,
-          "avgChange": 0.87
+          "avgChange": 0.75
         }
       }
     },
@@ -362,7 +362,7 @@
         "T+5": {
           "count": 57,
           "winRate": 43.9,
-          "avgChange": 0.91
+          "avgChange": 0.89
         }
       },
       "底": {
@@ -1084,7 +1084,7 @@
         "T+1": {
           "count": 19,
           "winRate": 31.6,
-          "avgChange": 1.85
+          "avgChange": 1.86
         },
         "T+3": {
           "count": 19,
@@ -2080,20 +2080,20 @@
     },
     "D": {
       "頂": {
-        "total": 614,
+        "total": 615,
         "T+1": {
-          "count": 614,
-          "winRate": 46.9,
+          "count": 615,
+          "winRate": 46.8,
           "avgChange": 0.02
         },
         "T+3": {
-          "count": 614,
-          "winRate": 44.8,
+          "count": 615,
+          "winRate": 44.9,
           "avgChange": 0.07
         },
         "T+5": {
-          "count": 614,
-          "winRate": 45.0,
+          "count": 615,
+          "winRate": 44.9,
           "avgChange": 0.06
         }
       },
@@ -2234,20 +2234,20 @@
     },
     "D": {
       "頂": {
-        "total": 475,
+        "total": 474,
         "T+1": {
-          "count": 475,
-          "winRate": 46.1,
+          "count": 474,
+          "winRate": 46.0,
           "avgChange": -0.02
         },
         "T+3": {
-          "count": 475,
-          "winRate": 47.8,
+          "count": 474,
+          "winRate": 47.9,
           "avgChange": 0.05
         },
         "T+5": {
-          "count": 475,
-          "winRate": 44.8,
+          "count": 474,
+          "winRate": 44.7,
           "avgChange": 0.16
         }
       },
