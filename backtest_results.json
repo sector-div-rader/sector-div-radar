@@ -125,12 +125,12 @@
         "T+3": {
           "count": 19,
           "winRate": 63.2,
-          "avgChange": -0.01
+          "avgChange": 0.09
         },
         "T+5": {
           "count": 19,
           "winRate": 73.7,
-          "avgChange": -0.73
+          "avgChange": -0.54
         }
       },
       "底": {
@@ -188,7 +188,7 @@
         "T+5": {
           "count": 4,
           "winRate": 50.0,
-          "avgChange": -0.33
+          "avgChange": -0.48
         }
       }
     },
@@ -302,7 +302,7 @@
         "T+5": {
           "count": 74,
           "winRate": 45.9,
-          "avgChange": -0.52
+          "avgChange": -0.53
         }
       }
     }
@@ -362,7 +362,7 @@
         "T+5": {
           "count": 56,
           "winRate": 42.9,
-          "avgChange": 1.01
+          "avgChange": 1.0
         }
       },
       "底": {
@@ -1772,21 +1772,21 @@
     },
     "D": {
       "頂": {
-        "total": 529,
+        "total": 527,
         "T+1": {
-          "count": 529,
-          "winRate": 46.7,
+          "count": 527,
+          "winRate": 46.5,
           "avgChange": 0.05
         },
         "T+3": {
-          "count": 529,
-          "winRate": 42.0,
+          "count": 527,
+          "winRate": 41.7,
           "avgChange": 0.14
         },
         "T+5": {
-          "count": 529,
-          "winRate": 43.9,
-          "avgChange": 0.13
+          "count": 527,
+          "winRate": 43.6,
+          "avgChange": 0.15
         }
       },
       "底": {
@@ -2080,19 +2080,19 @@
     },
     "D": {
       "頂": {
-        "total": 617,
+        "total": 616,
         "T+1": {
-          "count": 617,
-          "winRate": 46.7,
+          "count": 616,
+          "winRate": 46.8,
           "avgChange": 0.02
         },
         "T+3": {
-          "count": 617,
-          "winRate": 45.1,
+          "count": 616,
+          "winRate": 45.0,
           "avgChange": 0.06
         },
         "T+5": {
-          "count": 617,
+          "count": 616,
           "winRate": 45.1,
           "avgChange": 0.05
         }
