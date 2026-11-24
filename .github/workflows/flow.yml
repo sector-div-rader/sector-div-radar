@@ -2,21 +2,28 @@ name: Update intraday flow
 
 on:
   schedule:
-    # 每個鐘嘅第 15 分鐘跑（避開整點塞車）
-    - cron: "15 * * * *"
+    # 週一至五每小時第 15 分鐘 + 週六 UTC 00:15 (HKT 08:15 覆蓋美股週五收盤後)
+    - cron: "15 * * * 1-5"
+    - cron: "15 0 * * 6"
   workflow_dispatch:
+    inputs:
+      run_backtest:
+        description: "是否同時執行 backtest.py"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: write              # 只畀 commit 權限
+  contents: write
 
 concurrency:
   group: intraday-flow
-  cancel-in-progress: false    # 避免兩個 job 同時 push
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -31,9 +38,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Restore Longbridge Token
         env:
@@ -42,6 +47,7 @@ jobs:
         run: |
           mkdir -p ~/.longbridge/openapi/tokens
           echo "$LB_TOKEN_B64" | base64 -d > ~/.longbridge/openapi/tokens/$LB_CLIENT_ID
+          cp ~/.longbridge/openapi/tokens/$LB_CLIENT_ID /tmp/lb_token_before
           echo "Token 還原成功！"
 
       - name: Run intraday flow
@@ -50,29 +56,49 @@ jobs:
           LONGBRIDGE_REGION: hk
         run: python scripts/intraday_flow.py
 
-       #如果你有 build_site.py / backtest.py，照以下格式加：
-      - name: Run backtest
-        run: python backtest.py
-      
+      # 自動將 Longbridge SDK 刷新後的新 Token 存回 GitHub Secret (需設定 secrets.GH_PAT)
+      - name: Persist Refreshed Longbridge Token
+        if: ${{ secrets.GH_PAT != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          LB_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
+        run: |
+          TOKEN_FILE="$HOME/.longbridge/openapi/tokens/$LB_CLIENT_ID"
+          if [ -f "$TOKEN_FILE" ] && ! cmp -s "$TOKEN_FILE" /tmp/lb_token_before; then
+            base64 -w 0 "$TOKEN_FILE" | gh secret set LONGBRIDGE_OAUTH_TOKEN_CACHE_B64
+            echo "✅ Longbridge Token 已自動刷新並更新至 GitHub Secrets"
+          else
+            echo "Token 無變動，無需更新"
+          fi
+
+      # backtest 改為每日 HKT 06:15 跑一次（或手動勾選才跑），避免每小時重跑
+      - name: Run backtest (每日一次)
+        run: |
+          HKT_HOUR=$(TZ='Asia/Hong_Kong' date +%H)
+          if [ "${{ github.event.inputs.run_backtest }}" = "true" ] || [ "$HKT_HOUR" = "06" ]; then
+            echo "=== 執行 backtest.py ==="
+            python backtest.py
+          else
+            echo "=== 跳過 backtest.py (HKT $HKT_HOUR:15) ==="
+          fi
+
       - name: Build site
         run: python build_site.py
 
       - name: Commit changes
-        if: always()
+        if: success()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                   # 👇 改做咁樣，加晒所有檔案 👇
-          git add .
-          
+
+          # 明確指定要提交的輸出檔案/資料夾，避免誤將暫存檔或 Token 推上 Repo
+          git add index.html *.json *.csv data/ 2>/dev/null || true
+
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
+
           git commit -m "Update intraday flow $(date -u +'%Y-%m-%dT%H:%M')"
-          
-          # 喺 pull 之前，強制清理未追蹤嘅暫存檔 (防止再有漏網之魚)
-          git clean -fd
-          
-          git pull --rebase origin main
+          git pull --rebase --autostash origin main
           git push
