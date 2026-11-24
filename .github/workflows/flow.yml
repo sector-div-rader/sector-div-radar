@@ -56,13 +56,16 @@ jobs:
           LONGBRIDGE_REGION: hk
         run: python scripts/intraday_flow.py
 
-      # 自動將 Longbridge SDK 刷新後的新 Token 存回 GitHub Secret (需設定 secrets.GH_PAT)
+      # 改為在 Bash 內檢查 $GH_TOKEN，避開 step if: 禁止讀取 secrets 的限制
       - name: Persist Refreshed Longbridge Token
-        if: ${{ secrets.GH_PAT != '' }}
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           LB_CLIENT_ID: ${{ secrets.LONGBRIDGE_CLIENT_ID }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "未設定 GH_PAT，跳過自動更新 Secret"
+            exit 0
+          fi
           TOKEN_FILE="$HOME/.longbridge/openapi/tokens/$LB_CLIENT_ID"
           if [ -f "$TOKEN_FILE" ] && ! cmp -s "$TOKEN_FILE" /tmp/lb_token_before; then
             base64 -w 0 "$TOKEN_FILE" | gh secret set LONGBRIDGE_OAUTH_TOKEN_CACHE_B64
@@ -71,7 +74,6 @@ jobs:
             echo "Token 無變動，無需更新"
           fi
 
-      # backtest 改為每日 HKT 06:15 跑一次（或手動勾選才跑），避免每小時重跑
       - name: Run backtest (每日一次)
         run: |
           HKT_HOUR=$(TZ='Asia/Hong_Kong' date +%H)
@@ -90,8 +92,6 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # 明確指定要提交的輸出檔案/資料夾，避免誤將暫存檔或 Token 推上 Repo
           git add index.html *.json *.csv data/ 2>/dev/null || true
 
           if git diff --cached --quiet; then
