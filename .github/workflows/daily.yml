@@ -2,9 +2,23 @@ name: daily-radar
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # UTC 22:00 = HKT 06:00
-    - cron: '0 13 * * *'   # UTC 13:00 = HKT 21:00
+    - cron: '0 22 * * 1-5'   # UTC 週一至五 22:00 = HKT 週二至六 06:00 (美股收盤後全量掃描)
+    - cron: '0 13 * * 1-5'   # UTC 週一至五 13:00 = HKT 週一至五 21:00 (美股開盤前更新 Dashboard)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: '執行模式 (full = 全量掃描+發通知 / dashboard = 淨更新網頁數據)'
+        required: true
+        default: 'dashboard'
+        type: choice
+        options:
+          - dashboard
+          - full
+      run_backtest:
+        description: '強制執行 backtest.py'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: daily-radar
@@ -13,6 +27,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -35,15 +50,25 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-  
-      - name: Run backtest.py (每 2 個月跑一次)
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_MODE: ${{ github.event.inputs.mode }}
+
+      - name: Run backtest.py (單數月 1 號朝早 06:00 跑一次)
         run: |
           HKT_MONTH=$(TZ='Asia/Hong_Kong' date +%m)
-          if [ "$HKT_MONTH" = "01" ] || [ "$HKT_MONTH" = "03" ] || [ "$HKT_MONTH" = "05" ] || [ "$HKT_MONTH" = "07" ] || [ "$HKT_MONTH" = "09" ] || [ "$HKT_MONTH" = "11" ]; then
-            echo "=== 開始跑 backtest.py (HKT 月: $HKT_MONTH) ==="
+          HKT_DAY=$(TZ='Asia/Hong_Kong' date +%d)
+          HKT_HOUR=$(TZ='Asia/Hong_Kong' date +%H)
+          FORCE_BT="${{ github.event.inputs.run_backtest }}"
+
+          if [ "$FORCE_BT" = "true" ]; then
+            echo "=== 手動觸發 backtest.py ==="
+            python backtest.py
+          elif [[ "$HKT_MONTH" =~ ^(01|03|05|07|09|11)$ ]] && [ "$HKT_DAY" = "01" ] && [ "$HKT_HOUR" -lt "12" ]; then
+            echo "=== 雙月定期執行 backtest.py ($HKT_MONTH-$HKT_DAY) ==="
             python backtest.py
           else
-            echo "=== 今個月唔跑 backtest.py (HKT 月: $HKT_MONTH) ==="
+            echo "=== 跳過 backtest.py ($HKT_MONTH-$HKT_DAY $HKT_HOUR:00 HKT) ==="
           fi
 
       - name: Build Dashboard
@@ -58,6 +83,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "冇變更，跳過 commit"
           else
-            git commit -m "update V20.0 ${{ github.run_number }}"
+            git commit -m "update V20.1 #${{ github.run_number }}"
+            git pull --rebase --autostash
             git push
           fi
