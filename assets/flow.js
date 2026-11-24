@@ -1,56 +1,92 @@
 // assets/flow.js
 const FLOW_COLORS = { inflow: '#16a34a', outflow: '#dc2626' };
 let currentIntradayPeriod = 'all';
-let intradayDataStore = [];
-let intradayChartInstance = null;
-let intradayTableInstance = null;
+let qqqCoreStore = [];
+let sectorStore = [];
+
+const chartInstances = {};
+const tableInstances = {};
 
 function isDarkMode() {
   return document.documentElement.getAttribute('data-theme') !== 'light';
 }
 
-// 自動注入 Tabulator 深淺色適配樣式（無需改 HTML CSS）
-function injectTabulatorThemeStyle() {
-  if (document.getElementById('tabulator-custom-theme')) return;
+function injectCustomStyles() {
+  if (document.getElementById('flow-custom-theme')) return;
   const style = document.createElement('style');
-  style.id = 'tabulator-custom-theme';
+  style.id = 'flow-custom-theme';
   style.textContent = `
-    #intraday-flow-table.tabulator {
+    .flow-sub-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--accent);
+      margin: 14px 0 8px 0;
+      padding-left: 8px;
+      border-left: 3px solid var(--accent);
+    }
+    .flow-divider {
+      border: 0;
+      border-top: 1px dashed var(--border);
+      margin: 18px 0;
+    }
+    .tabulator {
       background-color: var(--card);
       border: 1px solid var(--border);
       border-radius: 6px;
       color: var(--text);
       font-size: 13px;
     }
-    #intraday-flow-table .tabulator-header {
+    .tabulator .tabulator-header {
       background-color: var(--bg);
       color: var(--accent);
       border-bottom: 1px solid var(--border);
     }
-    #intraday-flow-table .tabulator-header .tabulator-col {
+    .tabulator .tabulator-header .tabulator-col {
       background-color: var(--bg);
       border-right: 1px solid var(--border);
     }
-    #intraday-flow-table .tabulator-tableholder .tabulator-table {
+    .tabulator .tabulator-tableholder .tabulator-table {
       background-color: var(--card);
       color: var(--text);
     }
-    #intraday-flow-table .tabulator-row {
+    .tabulator .tabulator-row {
       background-color: var(--card);
       color: var(--text);
       border-bottom: 1px solid var(--border);
     }
-    #intraday-flow-table .tabulator-row.tabulator-row-even {
+    .tabulator .tabulator-row.tabulator-row-even {
       background-color: rgba(128, 128, 128, 0.04);
     }
-    #intraday-flow-table .tabulator-row:hover {
+    .tabulator .tabulator-row:hover {
       background-color: rgba(88, 166, 255, 0.12) !important;
     }
-    #intraday-flow-table .tabulator-cell {
+    .tabulator .tabulator-cell {
       border-right: 1px solid var(--border);
     }
   `;
   document.head.appendChild(style);
+}
+
+// 自動在現有板塊區塊上方插入「QQQ & 七巨頭」雙欄容器，無需改動 build_site.py
+function ensureQqqCoreContainers() {
+  if (document.getElementById('qqq-core-table')) return;
+  const sectorTableEl = document.getElementById('intraday-flow-table');
+  if (!sectorTableEl) return;
+  const sectorGrid = sectorTableEl.closest('.grid-2');
+  if (!sectorGrid || !sectorGrid.parentNode) return;
+
+  const qqqWrapper = document.createElement('div');
+  qqqWrapper.id = 'qqq-core-wrapper';
+  qqqWrapper.innerHTML = `
+    <div class="flow-sub-title">🎯 QQQ & 七巨頭核心權重資金流</div>
+    <div class="grid-2">
+      <div><div id="qqq-core-table"></div></div>
+      <div><div id="qqq-core-chart" style="height:290px;"></div></div>
+    </div>
+    <hr class="flow-divider">
+    <div class="flow-sub-title">📊 11 大板塊 ETF 資金流</div>
+  `;
+  sectorGrid.parentNode.insertBefore(qqqWrapper, sectorGrid);
 }
 
 function fmtMoney(v) {
@@ -85,12 +121,12 @@ function flowColorFormatter(cell) {
   return `<span style="color:${color};font-weight:600;">${fmtMoney(v)}</span>`;
 }
 
-// ================= 即時數據區塊 =================
-function renderIntradayChart(sorted, valueField) {
-  const el = document.getElementById('intraday-flow-chart');
+function renderBarChart(domId, sorted, valueField) {
+  const el = document.getElementById(domId);
   if (!el) return;
-  if (intradayChartInstance) intradayChartInstance.dispose();
-  intradayChartInstance = echarts.init(el);
+  if (chartInstances[domId]) chartInstances[domId].dispose();
+  const chart = echarts.init(el);
+  chartInstances[domId] = chart;
 
   const dark = isDarkMode();
   const textColor = dark ? '#c9d1d9' : '#1f2328';
@@ -99,7 +135,7 @@ function renderIntradayChart(sorted, valueField) {
   const labels = sorted.map(s => `${s.symbol} ${s.name}`).reverse();
   const values = sorted.map(s => s[valueField] ?? 0).reverse();
 
-  intradayChartInstance.setOption({
+  chart.setOption({
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -108,7 +144,7 @@ function renderIntradayChart(sorted, valueField) {
       textStyle: { color: textColor },
       formatter: p => `${p[0].name}<br/>淨流：<b>${fmtMoney(p[0].value)}</b>`,
     },
-    grid: { left: 145, right: 75, top: 15, bottom: 28 },
+    grid: { left: 145, right: 75, top: 12, bottom: 26 },
     xAxis: {
       type: 'value',
       axisLabel: { formatter: v => fmtMoney(v), color: textColor, fontSize: 11 },
@@ -122,7 +158,7 @@ function renderIntradayChart(sorted, valueField) {
     },
     series: [{
       type: 'bar',
-      barWidth: '60%',
+      barWidth: '58%',
       data: values.map(v => ({
         value: v,
         itemStyle: {
@@ -141,7 +177,7 @@ function renderIntradayChart(sorted, valueField) {
   });
 }
 
-function renderIntradayTable() {
+function renderGroupWidget(tableSelector, chartDomId, rawData, nameColTitle) {
   const fieldMap = {
     'all': 'main_net_inflow',
     'open_1h': 'net_inflow_open_1h',
@@ -149,30 +185,95 @@ function renderIntradayTable() {
     'close_1h': 'net_inflow_close_1h',
   };
   const currentField = fieldMap[currentIntradayPeriod];
-  const sorted = [...intradayDataStore].sort(
+  const sorted = [...rawData].sort(
     (a, b) => (b[currentField] ?? -Infinity) - (a[currentField] ?? -Infinity)
   );
 
-  if (intradayTableInstance) intradayTableInstance.destroy();
-  intradayTableInstance = new Tabulator('#intraday-flow-table', {
+  if (tableInstances[tableSelector]) tableInstances[tableSelector].destroy();
+  tableInstances[tableSelector] = new Tabulator(tableSelector, {
     data: sorted,
     layout: 'fitColumns',
     columns: [
-      { title: '#', formatter: 'rownum', width: 45, hozAlign: 'center', headerSort: false },
-      { title: 'ETF', field: 'symbol', width: 68, formatter: c => `<strong>${c.getValue()}</strong>` },
-      { title: '板塊', field: 'name', minWidth: 85 },
+      { title: '#', formatter: 'rownum', width: 42, hozAlign: 'center', headerSort: false },
+      { title: '代號', field: 'symbol', width: 70, formatter: c => `<strong>${c.getValue()}</strong>` },
+      { title: nameColTitle, field: 'name', minWidth: 85 },
       { title: '淨流', field: currentField, hozAlign: 'right', formatter: flowColorFormatter, sorter: 'number' },
     ],
   });
 
-  renderIntradayChart(sorted, currentField);
+  renderBarChart(chartDomId, sorted, currentField);
+}
+
+function renderAllFlows() {
+  if (qqqCoreStore.length > 0) {
+    ensureQqqCoreContainers();
+    renderGroupWidget('#qqq-core-table', 'qqq-core-chart', qqqCoreStore, '名稱');
+  }
+  if (sectorStore.length > 0) {
+    renderGroupWidget('#intraday-flow-table', 'intraday-flow-chart', sectorStore, '板塊');
+  }
 }
 
 function switchIntradayPeriod(period, btn) {
   currentIntradayPeriod = period;
   document.querySelectorAll('#intraday-controls .btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  renderIntradayTable();
+  renderAllFlows();
+}
+
+function detectAlertsForList(items, minFloor, groupTag) {
+  const absTotals = items
+    .map(s => Math.abs(s.main_net_inflow || 0))
+    .filter(v => v > 0)
+    .sort((a, b) => a - b);
+  const medianFlow = absTotals.length > 0 ? absTotals[Math.floor(absTotals.length / 2)] : 0;
+  const threshold = Math.max(minFloor, medianFlow * 1.4);
+
+  const alerts = [];
+  items.forEach(s => {
+    const total = s.main_net_inflow || 0;
+    const open = s.net_inflow_open_1h || 0;
+    const mid = s.net_inflow_mid || 0;
+    const close = s.net_inflow_close_1h || 0;
+    const label = `${groupTag}<b>${s.name} (${s.symbol})</b>`;
+
+    if (open > threshold && total < -threshold * 0.4) {
+      alerts.push(`🔻 ${label}：開盤首小時吸金 ${fmtMoney(open)}，但午後轉為全日淨流出 ${fmtMoney(total)}（高開低走）。`);
+      return;
+    }
+
+    if (Math.abs(total) < threshold) return;
+
+    if (total > 0 && close < -threshold * 0.35) {
+      alerts.push(`⚠️ ${label}：全日淨流入 ${fmtMoney(total)}，但尾盤出現回吐 (${fmtMoney(close)})，小心高位回落。`);
+    } else if (total < 0 && close > threshold * 0.35) {
+      alerts.push(`💡 ${label}：全日淨流出 ${fmtMoney(total)}，但尾盤有資金撈底 (${fmtMoney(close)})，留意短線止跌。`);
+    }
+
+    if (total > 0 && open > threshold && open > total * 0.6) {
+      alerts.push(`🔥 ${label}：開盤首小時已吸金 ${fmtMoney(open)}（主導全日升勢），屬強勢開局。`);
+    } else if (total > 0 && mid > threshold && mid > total * 0.75) {
+      alerts.push(`📈 ${label}：盤中時段資金大幅湧入 ${fmtMoney(mid)}，帶動全日趨勢。`);
+    }
+  });
+
+  return { alerts, threshold };
+}
+
+function generateSmartInsights(qqqCore, sectors) {
+  const insightEl = document.getElementById('flow-insights');
+  if (!insightEl) return;
+
+  const qRes = detectAlertsForList(qqqCore, 3.0e7, '[權重] ');
+  const sRes = detectAlertsForList(sectors, 1.5e7, '[板塊] ');
+  const allAlerts = [...qRes.alerts, ...sRes.alerts];
+
+  if (allAlerts.length > 0) {
+    insightEl.innerHTML = allAlerts.map(msg => `<div class="alert-item" style="margin:3px 0;">${msg}</div>`).join('');
+  } else {
+    insightEl.innerHTML = `<div style="color:var(--muted);font-size:13px;">目前未發現極端資金異動（權重門檻 ${fmtMoney(qRes.threshold)} / 板塊門檻 ${fmtMoney(sRes.threshold)}），整體相對平穩。</div>`;
+  }
+  insightEl.style.display = 'block';
 }
 
 async function loadIntradayFlow() {
@@ -186,84 +287,27 @@ async function loadIntradayFlow() {
     document.getElementById('intraday-updated').textContent =
       `更新時間：${hktUpdated}${tradeDate} · 來源：${data.note || 'Longbridge'}`;
 
-    intradayDataStore = data.sectors || [];
-    generateSmartInsights(intradayDataStore);
-    renderIntradayTable();
+    qqqCoreStore = data.qqq_core || [];
+    sectorStore = data.sectors || [];
+    generateSmartInsights(qqqCoreStore, sectorStore);
+    renderAllFlows();
   } catch (e) {
     document.getElementById('intraday-updated').textContent = `⚠️ 無法載入即時資金流數據：${e.message}`;
   }
 }
 
-// ================= 智能提示區塊 =================
-function generateSmartInsights(data) {
-  const insightEl = document.getElementById('flow-insights');
-  if (!insightEl || !data || data.length === 0) return;
-
-  // 動態計算門檻：取當日所有板塊絕對淨流入中位數的 1.5 倍，並設 $15M 底線
-  const absTotals = data
-    .map(s => Math.abs(s.main_net_inflow || 0))
-    .filter(v => v > 0)
-    .sort((a, b) => a - b);
-  const medianFlow = absTotals.length > 0 ? absTotals[Math.floor(absTotals.length / 2)] : 0;
-  const threshold = Math.max(1.5e7, medianFlow * 1.5);
-
-  const alerts = [];
-
-  data.forEach(s => {
-    const total = s.main_net_inflow || 0;
-    const open = s.net_inflow_open_1h || 0;
-    const mid = s.net_inflow_mid || 0;
-    const close = s.net_inflow_close_1h || 0;
-
-    // 1. 高開低走（開盤大幅吸金但全日轉為淨流出）
-    if (open > threshold && total < -threshold * 0.5) {
-      alerts.push(`🔻 <b>${s.name} (${s.symbol})</b>：開盤首小時吸金 ${fmtMoney(open)}，但午後遭拋售轉為全日淨流出 ${fmtMoney(total)}，屬典型高開低走。`);
-      return;
-    }
-
-    if (Math.abs(total) < threshold) return;
-
-    // 2. 全日淨流入但尾盤回吐
-    if (total > 0 && close < -threshold * 0.35) {
-      alerts.push(`⚠️ <b>${s.name} (${s.symbol})</b>：全日淨流入 ${fmtMoney(total)}，但尾盤出現獲利回吐 (${fmtMoney(close)})，小心高位回落。`);
-    }
-    // 3. 全日淨流出但尾盤撈底
-    else if (total < 0 && close > threshold * 0.35) {
-      alerts.push(`💡 <b>${s.name} (${s.symbol})</b>：全日淨流出 ${fmtMoney(total)}，但尾盤有資金撈底 (${fmtMoney(close)})，留意短線止跌。`);
-    }
-
-    // 4. 開盤強勢吸金主導全日
-    if (total > 0 && open > threshold && open > total * 0.6) {
-      alerts.push(`🔥 <b>${s.name} (${s.symbol})</b>：開盤首小時已吸金 ${fmtMoney(open)}（佔全日主力），屬強勢開局。`);
-    }
-
-    // 5. 盤中資金突襲
-    if (total > 0 && mid > threshold && mid > total * 0.75) {
-      alerts.push(`📈 <b>${s.name} (${s.symbol})</b>：盤中時段資金大幅湧入 ${fmtMoney(mid)}，主導全日升勢。`);
-    }
-  });
-
-  if (alerts.length > 0) {
-    insightEl.innerHTML = alerts.map(msg => `<div class="alert-item" style="margin:3px 0;">${msg}</div>`).join('');
-  } else {
-    insightEl.innerHTML = `<div style="color:var(--muted);font-size:13px;">目前未發現極端資金異動（基準門檻：${fmtMoney(threshold)}），板塊表現相對平穩。</div>`;
-  }
-  insightEl.style.display = 'block';
-}
-
-// ================= 啟動與事件監聽 =================
 document.addEventListener('DOMContentLoaded', () => {
-  injectTabulatorThemeStyle();
+  injectCustomStyles();
   loadIntradayFlow();
 
-  // 監聽主題切換，即時重繪 ECharts 配色
   const observer = new MutationObserver(() => {
-    if (intradayDataStore.length > 0) renderIntradayTable();
+    renderAllFlows();
   });
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-  // 視窗尺寸改變時自動調整圖表寬度
   window.addEventListener('resize', () => {
-    if (intradayChartInstance) intradayChartInstance.resize();
+    Object.values(chartInstances).forEach(chart => {
+      if (chart) chart.resize();
+    });
   });
 });
