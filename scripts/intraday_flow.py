@@ -6,6 +6,17 @@ import time
 import pandas as pd
 from longbridge.openapi import QuoteContext, Config, OAuthBuilder
 
+QQQ_CORE_TICKERS = {
+    "QQQ": "納指100ETF",
+    "NVDA": "輝達",
+    "AAPL": "蘋果",
+    "MSFT": "微軟",
+    "AMZN": "亞馬遜",
+    "META": "Meta",
+    "GOOGL": "Alphabet",
+    "TSLA": "特斯拉",
+}
+
 SECTOR_ETFS = {
     "XLK": "科技",
     "XLF": "金融",
@@ -47,7 +58,7 @@ def parse_timestamps(ts_series):
 
 
 def fetch_intraday_flow(ctx, symbol, retries=2):
-    """獲取當日分鐘級累計資金流，並按美股常規時段切分增量"""
+    """獲取當日分鐘級累計資金流，並按美股常規時段切分真實增量"""
     lb_symbol = f"{symbol}.US"
 
     for attempt in range(1, retries + 1):
@@ -75,14 +86,11 @@ def fetch_intraday_flow(ctx, symbol, retries=2):
             t_1030 = datetime.time(10, 30)
             t_1500 = datetime.time(15, 0)
             t_close = datetime.time(16, 0)
-
             times = df["time"].dt.time
 
-            # 盤前基準值（09:30 之前最後一筆累計值；若無盤前數據則為 0）
             pre_df = df[times < t_open]
             base_open = float(pre_df["cum_inflow"].iloc[-1]) if not pre_df.empty else 0.0
 
-            # 各時段結束時嘅累計值（若該時段尚未開始，則沿用上一階段累計值，差值自然為 0）
             df_before_1030 = df[(times >= t_open) & (times < t_1030)]
             end_open_1h = float(df_before_1030["cum_inflow"].iloc[-1]) if not df_before_1030.empty else base_open
 
@@ -92,7 +100,6 @@ def fetch_intraday_flow(ctx, symbol, retries=2):
             df_before_close = df[(times >= t_1500) & (times <= t_close)]
             end_close_1h = float(df_before_close["cum_inflow"].iloc[-1]) if not df_before_close.empty else end_mid
 
-            # 計算各時段真實淨流入增量
             inflow_open_1h = end_open_1h - base_open
             inflow_mid = end_mid - end_open_1h
             inflow_close_1h = end_close_1h - end_mid
@@ -118,29 +125,20 @@ def fetch_intraday_flow(ctx, symbol, retries=2):
                 return None
 
 
-def main():
-    print("正在啟動盤中資金流抓取程序...", flush=True)
-
-    try:
-        ctx = init_longbridge()
-        print("✅ 長橋認證成功！正在建立連線...", flush=True)
-    except Exception as e:
-        print(f"❌ 長橋初始化失敗: {e}", flush=True)
-        sys.exit(1)
-
+def collect_group(ctx, ticker_map, group_label):
     rows = []
-    success_count = 0
-    latest_trade_date = ""
+    success = 0
+    latest_date = ""
 
-    for symbol, name in SECTOR_ETFS.items():
+    print(f"\n--- 抓取 {group_label} ({len(ticker_map)} 隻) ---", flush=True)
+    for symbol, name in ticker_map.items():
         print(f"處理 {symbol} ({name})...", end=" ", flush=True)
         flow = fetch_intraday_flow(ctx, symbol)
 
         if flow:
-            success_count += 1
-            if flow["trade_date"] > latest_trade_date:
-                latest_trade_date = flow["trade_date"]
-
+            success += 1
+            if flow["trade_date"] > latest_date:
+                latest_date = flow["trade_date"]
             print(
                 f"成功 [{flow['trade_date']} {flow['time']}] "
                 f"(RTH總流: ${flow['main_net_inflow']:,.0f} | 開盤: ${flow['net_inflow_open_1h']:,.0f})",
@@ -175,26 +173,49 @@ def main():
                 "net_inflow_close_1h": 0.0,
             })
 
-        time.sleep(0.2)
+        time.sleep(0.15)
+
+    return rows, success, latest_date
+
+
+def main():
+    print("正在啟動 QQQ 核心 + 板塊盤中資金流抓取程序...", flush=True)
+
+    try:
+        ctx = init_longbridge()
+        print("✅ 長橋認證成功！正在建立連線...", flush=True)
+    except Exception as e:
+        print(f"❌ 長橋初始化失敗: {e}", flush=True)
+        sys.exit(1)
+
+    qqq_rows, qqq_ok, qqq_date = collect_group(ctx, QQQ_CORE_TICKERS, "QQQ & 七巨頭")
+    sector_rows, sector_ok, sector_date = collect_group(ctx, SECTOR_ETFS, "11 大板塊 ETF")
+
+    total_success = qqq_ok + sector_ok
+    latest_trade_date = max(qqq_date, sector_date)
 
     output_path = "data/flow/intraday.json"
-    if success_count == 0:
-        print("\n⚠️ 所有板塊均無有效數據，保留原有 intraday.json 避免清零覆蓋。", flush=True)
+    if total_success == 0:
+        print("\n⚠️ 所有標的均無有效數據，保留原有 intraday.json 避免清零覆蓋。", flush=True)
         sys.exit(1)
 
     output = {
         "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "trade_date": latest_trade_date,
-        "success_count": success_count,
-        "note": "盤中即時真實資金流（長橋 API，已修正為美股常規時段增量計算）",
-        "sectors": rows,
+        "success_count": total_success,
+        "note": "QQQ + 七巨頭 & 板塊真實資金流（長橋 API，常規時段增量）",
+        "qqq_core": qqq_rows,
+        "sectors": sector_rows,
     }
 
     os.makedirs("data/flow", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    print(f"\n✅ 完成，已寫入 {output_path}（成功 {success_count}/{len(rows)} 個板塊）", flush=True)
+    print(
+        f"\n✅ 完成，已寫入 {output_path}（QQQ核心 {qqq_ok}/{len(qqq_rows)} | 板塊 {sector_ok}/{len(sector_rows)}）",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
